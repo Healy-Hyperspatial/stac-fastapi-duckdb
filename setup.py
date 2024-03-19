@@ -6,8 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "duckdb==0.10.1"
-    "stac-fastapi.core==2.0.0",
+    "duckdb==0.10.1" "stac-fastapi.core==2.0.0",
     "uvicorn",
     "starlette",
 ]
@@ -28,7 +27,7 @@ extra_reqs = {
 
 setup(
     name="stac-fastapi.duckdb",
-    version="0.1.0"
+    version="0.1.0",
     description="DuckDB stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
@@ -49,5 +48,7 @@ setup(
     zip_safe=False,
     install_requires=install_requires,
     extras_require=extra_reqs,
-    entry_points={"console_scripts": ["stac-fastapi-duckdb=stac_fastapi.duckdb.app:run"]},
+    entry_points={
+        "console_scripts": ["stac-fastapi-duckdb=stac_fastapi.duckdb.app:run"]
+    },
 )

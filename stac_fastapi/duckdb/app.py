@@ -19,10 +19,9 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+
 from stac_fastapi.duckdb.config import DuckDBSettings
-from stac_fastapi.duckdb.database_logic import (
-    DatabaseLogic,
-)
+from stac_fastapi.duckdb.database_logic import DatabaseLogic
 
 settings = DuckDBSettings()
 session = Session.create_from_settings(settings)
