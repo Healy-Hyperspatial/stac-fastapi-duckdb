@@ -28,6 +28,7 @@ extra_reqs = {
 
 setup(
     name="stac-fastapi.duckdb",
+    version="0.1.0"
     description="DuckDB stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
