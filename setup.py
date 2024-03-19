@@ -6,7 +6,8 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "duckdb==0.10.1" "stac-fastapi.core==2.0.0",
+    "duckdb==0.10.1",
+    "stac-fastapi.core==2.0.0",
     "uvicorn",
     "starlette",
 ]

@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 import attr
 from bson import ObjectId
 from pymongo.errors import BulkWriteError, PyMongoError
-
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon

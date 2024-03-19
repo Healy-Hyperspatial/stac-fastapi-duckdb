@@ -1,6 +1,8 @@
+"""download demo geoparquet script."""
+
 import geopandas
-import pystac_client
 import planetary_computer
+import pystac_client
 
 # Set up the STAC client and access the specified collection
 catalog = pystac_client.Client.open(
@@ -12,7 +14,9 @@ collection = catalog.get_collection(collection_id)
 asset = collection.assets["geoparquet-items"]
 
 # Read the GeoParquet data into a GeoDataFrame
-df = geopandas.read_parquet(asset.href, storage_options=asset.extra_fields["table:storage_options"])
+df = geopandas.read_parquet(
+    asset.href, storage_options=asset.extra_fields["table:storage_options"]
+)
 
 # Display the first few rows of the GeoDataFrame
 print(df.head())

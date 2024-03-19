@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, Optional
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.core.core import (
@@ -38,8 +37,8 @@ else:
         create_collection_index,
     )
 
-from stac_fastapi.extensions.core import (  # FieldsExtension,
-    ContextExtension,
+from stac_fastapi.extensions.core import ContextExtension  # FieldsExtension,
+from stac_fastapi.extensions.core import (
     FieldsExtension,
     FilterExtension,
     SortExtension,

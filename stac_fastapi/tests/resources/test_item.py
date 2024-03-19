@@ -11,7 +11,6 @@ import pystac
 import pytest
 from geojson_pydantic.geometries import Polygon
 from pystac.utils import datetime_to_str
-
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin

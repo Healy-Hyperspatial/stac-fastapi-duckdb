@@ -3,10 +3,9 @@ from copy import deepcopy
 from typing import Callable
 
 import pytest
-from stac_pydantic import Item
-
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_pydantic import Item
 
 from ..conftest import MockRequest, create_item
 
