@@ -22,8 +22,6 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.duckdb.config import DuckDBSettings
 from stac_fastapi.duckdb.database_logic import (
     DatabaseLogic,
-    create_collection_index,
-    create_item_index,
 )
 
 settings = DuckDBSettings()
@@ -70,12 +68,6 @@ api = StacApi(
     search_post_request_model=post_request_model,
 )
 app = api.app
-
-
-@app.on_event("startup")
-async def _startup_event() -> None:
-    await create_collection_index()
-    await create_item_index()
 
 
 def run() -> None:
