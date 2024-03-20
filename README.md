@@ -1,8 +1,8 @@
 # stac-fastapi-duckdb
 
-## Duckdb backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
+## DuckDB backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
 
-   
+### This is a work in progress and is not functional yet. If you have any ideas related to this project please feel free to share. Please feel free to contribute as well. I am not 100% sure on how to proceed as I am new to DuckDB and this project will be different than stac-fastapi-pgstac or stac-fastapi-elasticsearch, becasue DuckDB is different.    
 
 To install from PyPI (not implemented yet):
 
