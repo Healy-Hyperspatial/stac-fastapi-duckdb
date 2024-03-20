@@ -1,5 +1,4 @@
 import duckdb
-import pandas as pd
 
 # Path to your Parquet file
 parquet_file_path = 'io-lulc-9-class.parquet'
