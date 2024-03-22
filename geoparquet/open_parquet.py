@@ -1,10 +1,12 @@
+"""open examine parquet file."""
+
 import duckdb
 
 # Path to your Parquet file
-parquet_file_path = 'io-lulc-9-class.parquet'
+parquet_file_path = "io-lulc-9-class.parquet"
 
 # Initialize a DuckDB connection. Using ":memory:" to run in-memory without creating a physical database file.
-conn = duckdb.connect(database=':memory:', read_only=False)
+conn = duckdb.connect(database=":memory:", read_only=False)
 
 # Load the Parquet file into a DuckDB relation (temporary view)
 relation = conn.from_parquet(parquet_file_path)
@@ -17,7 +19,9 @@ print(relation.limit(5).df())
 total_rows = relation.aggregate("count(*) as total_rows").df()
 print(f"\nTotal number of rows: {total_rows['total_rows'][0]}")
 
-row_count_result = conn.execute(f"SELECT COUNT(*) FROM '{parquet_file_path}'").fetchall()
+row_count_result = conn.execute(
+    f"SELECT COUNT(*) FROM '{parquet_file_path}'"
+).fetchall()
 row_count = row_count_result[0][0]
 print(f"\nTotal number of rows: {row_count}")
 
