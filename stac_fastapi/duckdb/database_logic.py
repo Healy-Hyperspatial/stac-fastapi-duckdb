@@ -6,15 +6,14 @@ import re
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
-from bson import ObjectId
-from pymongo.errors import BulkWriteError, PyMongoError
+# from bson import ObjectId
+# from pymongo.errors import BulkWriteError, PyMongoError
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.extensions.core import SortExtension
-from stac_fastapi.mongo.config import AsyncMongoDBSettings as AsyncSearchSettings
-from stac_fastapi.mongo.config import MongoDBSettings as SyncSearchSettings
-from stac_fastapi.mongo.utilities import decode_token, encode_token, serialize_doc
+from stac_fastapi.duckdb.config import DuckDBSettings
+from stac_fastapi.duckdb.utilities import decode_token, encode_token, serialize_doc
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -22,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
-COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
-DATABASE = os.getenv("MONGO_DB", "admin")
+# COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
+# ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
+# DATABASE = os.getenv("MONGO_DB", "admin")
 
 
 async def create_collection_index():
@@ -34,22 +33,23 @@ async def create_collection_index():
     Returns:
         None
     """
-    client = AsyncSearchSettings().create_client
-    if client:
-        try:
-            db = client[DATABASE]
-            await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-            print(f"Index created successfully for collection: {COLLECTIONS_INDEX}.")
-        except Exception as e:
-            # Handle exceptions, which could be due to existing index conflicts, etc.
-            print(
-                f"An error occurred while creating indexe for collection {COLLECTIONS_INDEX}: {e}"
-            )
-        finally:
-            print(f"Closing client: {client}")
-            client.close()
-    else:
-        print("Failed to create MongoDB client.")
+    pass
+    # client = AsyncSearchSettings().create_client
+    # if client:
+    #     try:
+    #         db = client[DATABASE]
+    #         await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+    #         print(f"Index created successfully for collection: {COLLECTIONS_INDEX}.")
+    #     except Exception as e:
+    #         # Handle exceptions, which could be due to existing index conflicts, etc.
+    #         print(
+    #             f"An error occurred while creating indexe for collection {COLLECTIONS_INDEX}: {e}"
+    #         )
+    #     finally:
+    #         print(f"Closing client: {client}")
+    #         client.close()
+    # else:
+    #     print("Failed to create MongoDB client.")
 
 
 async def create_item_index():
@@ -62,23 +62,24 @@ async def create_item_index():
     Returns:
         None
     """
-    client = AsyncSearchSettings().create_client
+    pass
+    # client = AsyncSearchSettings().create_client
 
-    if client:
-        db = client[DATABASE]
-        collection = db[ITEMS_INDEX]
-        try:
-            await collection.create_index([("properties.datetime", -1)])
-            await collection.create_index([("id", 1)], unique=True)
-            await collection.create_index([("geometry", "2dsphere")])
-            print(f"Indexes created successfully for collection: {ITEMS_INDEX}.")
-        except Exception as e:
-            # Handle exceptions, which could be due to existing index conflicts, etc.
-            print(
-                f"An error occurred while creating indexes for collection {ITEMS_INDEX}: {e}"
-            )
-        finally:
-            client.close()
+    # if client:
+    #     db = client[DATABASE]
+    #     collection = db[ITEMS_INDEX]
+    #     try:
+    #         await collection.create_index([("properties.datetime", -1)])
+    #         await collection.create_index([("id", 1)], unique=True)
+    #         await collection.create_index([("geometry", "2dsphere")])
+    #         print(f"Indexes created successfully for collection: {ITEMS_INDEX}.")
+    #     except Exception as e:
+    #         # Handle exceptions, which could be due to existing index conflicts, etc.
+    #         print(
+    #             f"An error occurred while creating indexes for collection {ITEMS_INDEX}: {e}"
+    #         )
+    #     finally:
+    #         client.close()
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -142,8 +143,7 @@ class MongoSearchAdapter:
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncSearchSettings().create_client
-    sync_client = SyncSearchSettings().create_client
+    client = DuckDBSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer
@@ -169,29 +169,30 @@ class DatabaseLogic:
             Tuple[List[Dict[str, Any]], Optional[str]]: A tuple containing a list of collections
             and an optional next token for pagination.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        query: Dict[str, Any] = {}
-        if token:
-            last_seen_id = decode_token(token)
-            query = {"id": {"$gt": last_seen_id}}
+        # query: Dict[str, Any] = {}
+        # if token:
+        #     last_seen_id = decode_token(token)
+        #     query = {"id": {"$gt": last_seen_id}}
 
-        cursor = collections_collection.find(query).sort("id", 1).limit(limit)
-        collections = await cursor.to_list(length=limit)
+        # cursor = collections_collection.find(query).sort("id", 1).limit(limit)
+        # collections = await cursor.to_list(length=limit)
 
-        next_token = None
-        if len(collections) == limit:
-            # Assumes collections are sorted by 'id' in ascending order.
-            next_token = encode_token(collections[-1]["id"])
-            print(f"Next token (for next page): {next_token}")
+        # next_token = None
+        # if len(collections) == limit:
+        #     # Assumes collections are sorted by 'id' in ascending order.
+        #     next_token = encode_token(collections[-1]["id"])
+        #     print(f"Next token (for next page): {next_token}")
 
-        serialized_collections = [
-            self.collection_serializer.db_to_stac(serialize_doc(collection), base_url)
-            for collection in collections
-        ]
+        # serialized_collections = [
+        #     self.collection_serializer.db_to_stac(serialize_doc(collection), base_url)
+        #     for collection in collections
+        # ]
 
-        return serialized_collections, next_token
+        # return serialized_collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -206,20 +207,23 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
         """
-        db = self.client[DATABASE]
-        collection = db[ITEMS_INDEX]
+        # conn.from_parquet(parquet_file_path)
+        client = self.client()
+        print(client)
+        # db = self.client[DATABASE]
+        # collection = db[ITEMS_INDEX]
 
-        # Adjusted to include collection_id in the query to fetch items within a specific collection
-        item = await collection.find_one({"id": item_id, "collection": collection_id})
-        if not item:
-            # If the item is not found, raise NotFoundError
-            raise NotFoundError(
-                f"Item {item_id} in collection {collection_id} does not exist."
-            )
+        # # Adjusted to include collection_id in the query to fetch items within a specific collection
+        # item = await collection.find_one({"id": item_id, "collection": collection_id})
+        # if not item:
+        #     # If the item is not found, raise NotFoundError
+        #     raise NotFoundError(
+        #         f"Item {item_id} in collection {collection_id} does not exist."
+        #     )
 
-        # Serialize the MongoDB document to make it JSON serializable
-        serialized_item = serialize_doc(item)
-        return serialized_item
+        # # Serialize the MongoDB document to make it JSON serializable
+        # serialized_item = serialize_doc(item)
+        # return serialized_item
 
     @staticmethod
     def make_search():
@@ -229,14 +233,16 @@ class DatabaseLogic:
     @staticmethod
     def apply_ids_filter(search: MongoSearchAdapter, item_ids: List[str]):
         """Database logic to search a list of STAC item ids."""
-        search.add_filter({"id": {"$in": item_ids}})
-        return search
+        pass
+        # search.add_filter({"id": {"$in": item_ids}})
+        # return search
 
     @staticmethod
     def apply_collections_filter(search: MongoSearchAdapter, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        search.add_filter({"collection": {"$in": collection_ids}})
-        return search
+        pass
+        # search.add_filter({"collection": {"$in": collection_ids}})
+        # return search
 
     @staticmethod
     def apply_datetime_filter(search: MongoSearchAdapter, datetime_search):
@@ -249,18 +255,19 @@ class DatabaseLogic:
         Returns:
             Search: The filtered search object.
         """
-        if "eq" in datetime_search:
-            search.add_filter({"properties.datetime": datetime_search["eq"]})
-        else:
-            if "gte" in datetime_search:
-                search.add_filter(
-                    {"properties.datetime": {"$gte": datetime_search["gte"]}}
-                )
-            if "lte" in datetime_search:
-                search.add_filter(
-                    {"properties.datetime": {"$lte": datetime_search["lte"]}}
-                )
-        return search
+        pass
+        # if "eq" in datetime_search:
+        #     search.add_filter({"properties.datetime": datetime_search["eq"]})
+        # else:
+        #     if "gte" in datetime_search:
+        #         search.add_filter(
+        #             {"properties.datetime": {"$gte": datetime_search["gte"]}}
+        #         )
+        #     if "lte" in datetime_search:
+        #         search.add_filter(
+        #             {"properties.datetime": {"$lte": datetime_search["lte"]}}
+        #         )
+        # return search
 
     @staticmethod
     def apply_bbox_filter(search: MongoSearchAdapter, bbox: List):
@@ -277,17 +284,18 @@ class DatabaseLogic:
             The bounding box is transformed into a polygon using the `bbox2polygon` function and
             a geo_shape filter is added to the search object, set to intersect with the specified polygon.
         """
-        geojson_polygon = {"type": "Polygon", "coordinates": bbox2polygon(*bbox)}
-        search.add_filter(
-            {
-                "geometry": {
-                    "$geoIntersects": {
-                        "$geometry": geojson_polygon,
-                    }
-                }
-            }
-        )
-        return search
+        pass
+        # geojson_polygon = {"type": "Polygon", "coordinates": bbox2polygon(*bbox)}
+        # search.add_filter(
+        #     {
+        #         "geometry": {
+        #             "$geoIntersects": {
+        #                 "$geometry": geojson_polygon,
+        #             }
+        #         }
+        #     }
+        # )
+        # return search
 
     @staticmethod
     def apply_intersects_filter(
@@ -306,11 +314,12 @@ class DatabaseLogic:
         Notes:
             A geo_shape filter is added to the search object, set to intersect with the specified geometry.
         """
-        geometry_dict = {"type": intersects.type, "coordinates": intersects.coordinates}
-        search.add_filter(
-            {"geometry": {"$geoIntersects": {"$geometry": geometry_dict}}}
-        )
-        return search
+        pass
+        # geometry_dict = {"type": intersects.type, "coordinates": intersects.coordinates}
+        # search.add_filter(
+        #     {"geometry": {"$geoIntersects": {"$geometry": geometry_dict}}}
+        # )
+        # return search
 
     @staticmethod
     def apply_stacql_filter(
@@ -328,28 +337,29 @@ class DatabaseLogic:
         Returns:
             search (Search): The search object with the specified filter applied.
         """
+        pass
         # MongoDB comparison operators mapping
-        op_mapping = {
-            "eq": "$eq",
-            "gt": "$gt",
-            "gte": "$gte",
-            "lt": "$lt",
-            "lte": "$lte",
-        }
+        # op_mapping = {
+        #     "eq": "$eq",
+        #     "gt": "$gt",
+        #     "gte": "$gte",
+        #     "lt": "$lt",
+        #     "lte": "$lte",
+        # }
 
-        # Replace double underscores with dots for nested field queries
-        field = field.replace("__", ".")
+        # # Replace double underscores with dots for nested field queries
+        # field = field.replace("__", ".")
 
-        # Construct the MongoDB filter
-        if op in op_mapping:
-            mongo_op = op_mapping[op]
-            filter_condition = {field: {mongo_op: value}}
-        else:
-            raise ValueError(f"Unsupported operation '{op}'")
+        # # Construct the MongoDB filter
+        # if op in op_mapping:
+        #     mongo_op = op_mapping[op]
+        #     filter_condition = {field: {mongo_op: value}}
+        # else:
+        #     raise ValueError(f"Unsupported operation '{op}'")
 
-        # Add the constructed filter to the search adapter's filters
-        search.add_filter(filter_condition)
-        return search
+        # # Add the constructed filter to the search adapter's filters
+        # search.add_filter(filter_condition)
+        # return search
 
     @staticmethod
     def translate_cql2_to_mongo(cql2_filter: Dict[str, Any]) -> Dict[str, Any]:
@@ -366,107 +376,108 @@ class DatabaseLogic:
         Returns:
             A MongoDB query as a dictionary.
         """
-        print("CQL2 filter:", cql2_filter)
-        op_mapping = {
-            ">": "$gt",
-            ">=": "$gte",
-            "<": "$lt",
-            "<=": "$lte",
-            "=": "$eq",
-            "!=": "$ne",
-            "like": "$regex",
-            "in": "$in",
-        }
+        pass
+        # print("CQL2 filter:", cql2_filter)
+        # op_mapping = {
+        #     ">": "$gt",
+        #     ">=": "$gte",
+        #     "<": "$lt",
+        #     "<=": "$lte",
+        #     "=": "$eq",
+        #     "!=": "$ne",
+        #     "like": "$regex",
+        #     "in": "$in",
+        # }
 
-        if cql2_filter["op"] in ["and", "or"]:
-            mongo_op = f"${cql2_filter['op']}"
-            return {
-                mongo_op: [
-                    DatabaseLogic.translate_cql2_to_mongo(arg)
-                    for arg in cql2_filter["args"]
-                ]
-            }
+        # if cql2_filter["op"] in ["and", "or"]:
+        #     mongo_op = f"${cql2_filter['op']}"
+        #     return {
+        #         mongo_op: [
+        #             DatabaseLogic.translate_cql2_to_mongo(arg)
+        #             for arg in cql2_filter["args"]
+        #         ]
+        #     }
 
-        elif cql2_filter["op"] == "not":
-            translated_condition = DatabaseLogic.translate_cql2_to_mongo(
-                cql2_filter["args"][0]
-            )
-            return {"$nor": [translated_condition]}
+        # elif cql2_filter["op"] == "not":
+        #     translated_condition = DatabaseLogic.translate_cql2_to_mongo(
+        #         cql2_filter["args"][0]
+        #     )
+        #     return {"$nor": [translated_condition]}
 
-        elif cql2_filter["op"] == "s_intersects":
-            geometry = cql2_filter["args"][1]
-            return {"geometry": {"$geoIntersects": {"$geometry": geometry}}}
+        # elif cql2_filter["op"] == "s_intersects":
+        #     geometry = cql2_filter["args"][1]
+        #     return {"geometry": {"$geoIntersects": {"$geometry": geometry}}}
 
-        elif cql2_filter["op"] == "between":
-            property_name = cql2_filter["args"][0]["property"]
+        # elif cql2_filter["op"] == "between":
+        #     property_name = cql2_filter["args"][0]["property"]
 
-            # Use the special mapping directly if available, or construct the path appropriately
-            if property_name in filter.queryables_mapping:
-                property_path = filter.queryables_mapping[property_name]
-            elif property_name not in [
-                "id",
-                "collection",
-            ] and not property_name.startswith("properties."):
-                property_path = f"properties.{property_name}"
-            else:
-                property_path = property_name
+        #     # Use the special mapping directly if available, or construct the path appropriately
+        #     if property_name in filter.queryables_mapping:
+        #         property_path = filter.queryables_mapping[property_name]
+        #     elif property_name not in [
+        #         "id",
+        #         "collection",
+        #     ] and not property_name.startswith("properties."):
+        #         property_path = f"properties.{property_name}"
+        #     else:
+        #         property_path = property_name
 
-            lower_bound = cql2_filter["args"][1]
-            upper_bound = cql2_filter["args"][2]
-            return {property_path: {"$gte": lower_bound, "$lte": upper_bound}}
+        #     lower_bound = cql2_filter["args"][1]
+        #     upper_bound = cql2_filter["args"][2]
+        #     return {property_path: {"$gte": lower_bound, "$lte": upper_bound}}
 
-        else:
-            property_name = cql2_filter["args"][0]["property"]
-            # Check if the property name is in the special mapping
-            if property_name in filter.queryables_mapping:
-                property_path = filter.queryables_mapping[property_name]
-            elif property_name not in [
-                "id",
-                "collection",
-            ] and not property_name.startswith("properties."):
-                property_path = f"properties.{property_name}"
-            else:
-                property_path = property_name
+        # else:
+        #     property_name = cql2_filter["args"][0]["property"]
+        #     # Check if the property name is in the special mapping
+        #     if property_name in filter.queryables_mapping:
+        #         property_path = filter.queryables_mapping[property_name]
+        #     elif property_name not in [
+        #         "id",
+        #         "collection",
+        #     ] and not property_name.startswith("properties."):
+        #         property_path = f"properties.{property_name}"
+        #     else:
+        #         property_path = property_name
 
-            value = cql2_filter["args"][1]
-            # Attempt to convert numeric string to float or integer
-            try:
-                if "." in value:
-                    value = float(value)
-                else:
-                    value = int(value)
-            except (ValueError, TypeError):
-                pass  # Keep value as is if conversion is not possible
-            mongo_op = op_mapping.get(cql2_filter["op"])
+        #     value = cql2_filter["args"][1]
+        #     # Attempt to convert numeric string to float or integer
+        #     try:
+        #         if "." in value:
+        #             value = float(value)
+        #         else:
+        #             value = int(value)
+        #     except (ValueError, TypeError):
+        #         pass  # Keep value as is if conversion is not possible
+        #     mongo_op = op_mapping.get(cql2_filter["op"])
 
-            if mongo_op is None:
-                raise ValueError(
-                    f"Unsupported operation '{cql2_filter['op']}' in CQL2 filter."
-                )
+        #     if mongo_op is None:
+        #         raise ValueError(
+        #             f"Unsupported operation '{cql2_filter['op']}' in CQL2 filter."
+        #         )
 
-            if mongo_op == "$regex":
-                # Replace SQL LIKE wildcards with regex equivalents, handling escaped characters
-                regex_pattern = re.sub(
-                    r"(?<!\\)%", ".*", value
-                )  # Replace '%' with '.*', ignoring escaped '\%'
-                regex_pattern = re.sub(
-                    r"(?<!\\)_", ".", regex_pattern
-                )  # Replace '_' with '.', ignoring escaped '\_'
+        #     if mongo_op == "$regex":
+        #         # Replace SQL LIKE wildcards with regex equivalents, handling escaped characters
+        #         regex_pattern = re.sub(
+        #             r"(?<!\\)%", ".*", value
+        #         )  # Replace '%' with '.*', ignoring escaped '\%'
+        #         regex_pattern = re.sub(
+        #             r"(?<!\\)_", ".", regex_pattern
+        #         )  # Replace '_' with '.', ignoring escaped '\_'
 
-                # Handle escaped wildcards by reverting them to their literal form
-                regex_pattern = regex_pattern.replace("\\%", "%").replace("\\_", "_")
+        #         # Handle escaped wildcards by reverting them to their literal form
+        #         regex_pattern = regex_pattern.replace("\\%", "%").replace("\\_", "_")
 
-                # Ensure backslashes are properly escaped for MongoDB regex
-                regex_pattern = regex_pattern.replace("\\", "\\\\")
+        #         # Ensure backslashes are properly escaped for MongoDB regex
+        #         regex_pattern = regex_pattern.replace("\\", "\\\\")
 
-                return {property_path: {"$regex": regex_pattern, "$options": "i"}}
+        #         return {property_path: {"$regex": regex_pattern, "$options": "i"}}
 
-            elif mongo_op == "$in":
-                if not isinstance(value, list):
-                    raise ValueError(f"Arg {value} is not a list")
-                return {property_path: {mongo_op: value}}
-            else:
-                return {property_path: {mongo_op: value}}
+        #     elif mongo_op == "$in":
+        #         if not isinstance(value, list):
+        #             raise ValueError(f"Arg {value} is not a list")
+        #         return {property_path: {mongo_op: value}}
+        #     else:
+        #         return {property_path: {mongo_op: value}}
 
     @staticmethod
     def apply_cql2_filter(
@@ -484,12 +495,13 @@ class DatabaseLogic:
         Returns:
             MongoSearchAdapter: The search adapter with the CQL2 filter applied.
         """
-        if _filter is not None:
-            mongo_query = DatabaseLogic.translate_cql2_to_mongo(_filter)
-            search_adapter.add_filter(mongo_query)
+        pass
+        # if _filter is not None:
+        #     mongo_query = DatabaseLogic.translate_cql2_to_mongo(_filter)
+        #     search_adapter.add_filter(mongo_query)
 
-        print("search adapter: ", search_adapter)
-        return search_adapter
+        # print("search adapter: ", search_adapter)
+        # return search_adapter
 
     @staticmethod
     def populate_sort(sortby: List[SortExtension]) -> List[Tuple[str, int]]:
@@ -505,17 +517,18 @@ class DatabaseLogic:
                                 with direction being 1 for 'asc' and -1 for 'desc'.
                                 Returns an empty list if no sort criteria are provided.
         """
-        if not sortby:
-            return []
+        pass
+        # if not sortby:
+        #     return []
 
-        mongo_sort = []
-        for sort_extension in sortby:
-            field = sort_extension.field
-            # Convert the direction enum to a string, then to MongoDB's expected format
-            direction = 1 if sort_extension.direction.value == "asc" else -1
-            mongo_sort.append((field, direction))
+        # mongo_sort = []
+        # for sort_extension in sortby:
+        #     field = sort_extension.field
+        #     # Convert the direction enum to a string, then to MongoDB's expected format
+        #     direction = 1 if sort_extension.direction.value == "asc" else -1
+        #     mongo_sort.append((field, direction))
 
-        return mongo_sort
+        # return mongo_sort
 
     async def execute_search(
         self,
@@ -547,39 +560,40 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        db = self.client[DATABASE]
-        collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collection = db[ITEMS_INDEX]
 
-        query = {"$and": search.filters} if search and search.filters else {}
+        # query = {"$and": search.filters} if search and search.filters else {}
 
-        print("Query: ", query)
-        if collection_ids:
-            query["collection"] = {"$in": collection_ids}
+        # print("Query: ", query)
+        # if collection_ids:
+        #     query["collection"] = {"$in": collection_ids}
 
-        sort_criteria = sort if sort else [("id", 1)]  # Default sort
-        try:
-            if token:
-                last_id = decode_token(token)
-                query["id"] = {"$gt": last_id}
+        # sort_criteria = sort if sort else [("id", 1)]  # Default sort
+        # try:
+        #     if token:
+        #         last_id = decode_token(token)
+        #         query["id"] = {"$gt": last_id}
 
-            cursor = collection.find(query).sort(sort_criteria).limit(limit + 1)
-            items = await cursor.to_list(length=limit + 1)
+        #     cursor = collection.find(query).sort(sort_criteria).limit(limit + 1)
+        #     items = await cursor.to_list(length=limit + 1)
 
-            next_token = None
-            if len(items) > limit:
-                next_token = base64.urlsafe_b64encode(
-                    str(items[-1]["_id"]).encode()
-                ).decode()
-                items = items[:-1]
+        #     next_token = None
+        #     if len(items) > limit:
+        #         next_token = base64.urlsafe_b64encode(
+        #             str(items[-1]["_id"]).encode()
+        #         ).decode()
+        #         items = items[:-1]
 
-            maybe_count = None
-            if not token:
-                maybe_count = await collection.count_documents(query)
+        #     maybe_count = None
+        #     if not token:
+        #         maybe_count = await collection.count_documents(query)
 
-            return items, maybe_count, next_token
-        except PyMongoError as e:
-            print(f"Database operation failed: {e}")
-            raise
+        #     return items, maybe_count, next_token
+        # except PyMongoError as e:
+        #     print(f"Database operation failed: {e}")
+        #     raise
 
     """ TRANSACTION LOGIC """
 
@@ -597,13 +611,14 @@ class DatabaseLogic:
             NotFoundError: If the STAC collection specified by `collection_id` does not exist
                         within the MongoDB collection defined by COLLECTIONS_INDEX.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        # Query the collections collection to see if a document with the specified collection_id exists
-        collection_exists = await collections_collection.find_one({"id": collection_id})
-        if not collection_exists:
-            raise NotFoundError(f"Collection {collection_id} does not exist")
+        # # Query the collections collection to see if a document with the specified collection_id exists
+        # collection_exists = await collections_collection.find_one({"id": collection_id})
+        # if not collection_exists:
+        #     raise NotFoundError(f"Collection {collection_id} does not exist")
 
     async def create_item(self, item: Item, refresh: bool = False):
         """
@@ -617,25 +632,26 @@ class DatabaseLogic:
             ConflictError: If the item with the same ID already exists within the collection.
             NotFoundError: If the specified collection does not exist in MongoDB.
         """
-        db = self.client[DATABASE]
-        items_collection = db[ITEMS_INDEX]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # items_collection = db[ITEMS_INDEX]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        collection_exists = await collections_collection.count_documents(
-            {"id": item["collection"]}, limit=1
-        )
-        if not collection_exists:
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        # collection_exists = await collections_collection.count_documents(
+        #     {"id": item["collection"]}, limit=1
+        # )
+        # if not collection_exists:
+        #     raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        new_item = item.copy()
-        new_item["_id"] = item.get("_id", ObjectId())
+        # new_item = item.copy()
+        # new_item["_id"] = item.get("_id", ObjectId())
 
-        existing_item = await items_collection.find_one({"_id": new_item["_id"]})
-        if existing_item:
-            raise ConflictError(f"Item with _id {item['_id']} already exists")
+        # existing_item = await items_collection.find_one({"_id": new_item["_id"]})
+        # if existing_item:
+        #     raise ConflictError(f"Item with _id {item['_id']} already exists")
 
-        await items_collection.insert_one(new_item)
-        item = serialize_doc(item)
+        # await items_collection.insert_one(new_item)
+        # item = serialize_doc(item)
 
     async def prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
@@ -655,29 +671,30 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database and exist_ok is False.
             NotFoundError: If the collection specified by the item does not exist.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
+        # items_collection = db[ITEMS_INDEX]
 
-        # Check if the collection exists
-        collection_exists = await collections_collection.count_documents(
-            {"id": item["collection"]}, limit=1
-        )
-        if not collection_exists:
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        # # Check if the collection exists
+        # collection_exists = await collections_collection.count_documents(
+        #     {"id": item["collection"]}, limit=1
+        # )
+        # if not collection_exists:
+        #     raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        # Transform item using item_serializer for MongoDB compatibility
-        mongo_item = self.item_serializer.stac_to_db(item, base_url)
+        # # Transform item using item_serializer for MongoDB compatibility
+        # mongo_item = self.item_serializer.stac_to_db(item, base_url)
 
-        if not exist_ok:
-            existing_item = await items_collection.find_one({"id": mongo_item["id"]})
-            if existing_item:
-                raise ConflictError(
-                    f"Item {mongo_item['id']} in collection {mongo_item['collection']} already exists"
-                )
+        # if not exist_ok:
+        #     existing_item = await items_collection.find_one({"id": mongo_item["id"]})
+        #     if existing_item:
+        #         raise ConflictError(
+        #             f"Item {mongo_item['id']} in collection {mongo_item['collection']} already exists"
+        #         )
 
-        # Return the transformed item ready for insertion
-        return serialize_doc(mongo_item)
+        # # Return the transformed item ready for insertion
+        # return serialize_doc(mongo_item)
 
     def sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
@@ -697,29 +714,30 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database and exist_ok is False.
             NotFoundError: If the collection specified by the item does not exist.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
+        # items_collection = db[ITEMS_INDEX]
 
-        # Check if the collection exists
-        collection_exists = collections_collection.count_documents(
-            {"id": item["collection"]}, limit=1
-        )
-        if not collection_exists:
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        # # Check if the collection exists
+        # collection_exists = collections_collection.count_documents(
+        #     {"id": item["collection"]}, limit=1
+        # )
+        # if not collection_exists:
+        #     raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        # Transform item using item_serializer for MongoDB compatibility
-        mongo_item = self.item_serializer.stac_to_db(item, base_url)
-        print("mongo item id: ", mongo_item["id"])
-        if not exist_ok:
-            existing_item = items_collection.find_one({"id": mongo_item["id"]})
-            if existing_item:
-                raise ConflictError(
-                    f"Item {mongo_item['id']} in collection {mongo_item['collection']} already exists"
-                )
+        # # Transform item using item_serializer for MongoDB compatibility
+        # mongo_item = self.item_serializer.stac_to_db(item, base_url)
+        # print("mongo item id: ", mongo_item["id"])
+        # if not exist_ok:
+        #     existing_item = items_collection.find_one({"id": mongo_item["id"]})
+        #     if existing_item:
+        #         raise ConflictError(
+        #             f"Item {mongo_item['id']} in collection {mongo_item['collection']} already exists"
+        #         )
 
-        # Return the transformed item ready for insertion
-        return serialize_doc(mongo_item)
+        # # Return the transformed item ready for insertion
+        # return serialize_doc(mongo_item)
 
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
@@ -735,22 +753,23 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the Item does not exist in the database.
         """
-        db = self.client[DATABASE]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # items_collection = db[ITEMS_INDEX]
 
-        try:
-            # Attempt to delete the item from the collection
-            result = await items_collection.delete_one({"id": item_id})
-            if result.deleted_count == 0:
-                # If no items were deleted, it means the item did not exist
-                raise NotFoundError(
-                    f"Item {item_id} in collection {collection_id} not found"
-                )
-        except PyMongoError as e:
-            # Catch any MongoDB error and re-raise as NotFoundError for consistency with the original function's behavior
-            raise NotFoundError(
-                f"Error deleting item {item_id} in collection {collection_id}: {e}"
-            )
+        # try:
+        #     # Attempt to delete the item from the collection
+        #     result = await items_collection.delete_one({"id": item_id})
+        #     if result.deleted_count == 0:
+        #         # If no items were deleted, it means the item did not exist
+        #         raise NotFoundError(
+        #             f"Item {item_id} in collection {collection_id} not found"
+        #         )
+        # except PyMongoError as e:
+        #     # Catch any MongoDB error and re-raise as NotFoundError for consistency with the original function's behavior
+        #     raise NotFoundError(
+        #         f"Error deleting item {item_id} in collection {collection_id}: {e}"
+        #     )
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
         """Create a single collection document in the database.
@@ -762,25 +781,26 @@ class DatabaseLogic:
         Raises:
             ConflictError: If a Collection with the same id already exists in the database.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        # Check if the collection already exists
-        existing_collection = await collections_collection.find_one(
-            {"id": collection["id"]}
-        )
-        if existing_collection:
-            raise ConflictError(f"Collection {collection['id']} already exists")
+        # # Check if the collection already exists
+        # existing_collection = await collections_collection.find_one(
+        #     {"id": collection["id"]}
+        # )
+        # if existing_collection:
+        #     raise ConflictError(f"Collection {collection['id']} already exists")
 
-        try:
-            # Insert the new collection document into the collections collection
-            await collections_collection.insert_one(collection)
-        except PyMongoError as e:
-            # Catch any MongoDB error and raise an appropriate error
-            print(f"Failed to create collection {collection['id']}: {e}")
-            raise ConflictError(f"Failed to create collection {collection['id']}: {e}")
+        # try:
+        #     # Insert the new collection document into the collections collection
+        #     await collections_collection.insert_one(collection)
+        # except PyMongoError as e:
+        #     # Catch any MongoDB error and raise an appropriate error
+        #     print(f"Failed to create collection {collection['id']}: {e}")
+        #     raise ConflictError(f"Failed to create collection {collection['id']}: {e}")
 
-        collection = serialize_doc(collection)
+        # collection = serialize_doc(collection)
 
     async def find_collection(self, collection_id: str) -> dict:
         """
@@ -796,19 +816,20 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        try:
-            collection = await collections_collection.find_one({"id": collection_id})
-            if not collection:
-                raise NotFoundError(f"Collection {collection_id} not found")
-            serialized_collection = serialize_doc(collection)
-            return serialized_collection
-        except PyMongoError as e:
-            # This is a general catch-all for MongoDB errors; adjust as needed for more specific handling
-            print(f"Failed to find collection {collection_id}: {e}")
-            raise NotFoundError(f"Collection {collection_id} not found")
+        # try:
+        #     collection = await collections_collection.find_one({"id": collection_id})
+        #     if not collection:
+        #         raise NotFoundError(f"Collection {collection_id} not found")
+        #     serialized_collection = serialize_doc(collection)
+        #     return serialized_collection
+        # except PyMongoError as e:
+        #     # This is a general catch-all for MongoDB errors; adjust as needed for more specific handling
+        #     print(f"Failed to find collection {collection_id}: {e}")
+        #     raise NotFoundError(f"Collection {collection_id} not found")
 
     async def update_collection(
         self, collection_id: str, collection: Collection, refresh: bool = False
@@ -830,40 +851,41 @@ class DatabaseLogic:
             It does not directly modify the `_id` field, which is immutable in MongoDB.
             When changing a collection's ID, it creates a new document with the new ID and deletes the old document.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        # Ensure the existing collection exists
-        existing_collection = await self.find_collection(collection_id)
-        if not existing_collection:
-            raise NotFoundError(f"Collection {collection_id} not found")
+        # # Ensure the existing collection exists
+        # existing_collection = await self.find_collection(collection_id)
+        # if not existing_collection:
+        #     raise NotFoundError(f"Collection {collection_id} not found")
 
-        # Handle changing collection ID
-        if collection_id != collection["id"]:
-            new_id_exists = await collections_collection.find_one(
-                {"id": collection["id"]}
-            )
-            if new_id_exists:
-                raise ConflictError(
-                    f"Collection with ID {collection['id']} already exists"
-                )
+        # # Handle changing collection ID
+        # if collection_id != collection["id"]:
+        #     new_id_exists = await collections_collection.find_one(
+        #         {"id": collection["id"]}
+        #     )
+        #     if new_id_exists:
+        #         raise ConflictError(
+        #             f"Collection with ID {collection['id']} already exists"
+        #         )
 
-            items_collection = db[ITEMS_INDEX]
-            # Update only items related to the old collection ID to the new collection ID
-            await items_collection.update_many(
-                {"collection": collection_id},
-                {"$set": {"collection": collection["id"]}},
-            )
+        #     items_collection = db[ITEMS_INDEX]
+        #     # Update only items related to the old collection ID to the new collection ID
+        #     await items_collection.update_many(
+        #         {"collection": collection_id},
+        #         {"$set": {"collection": collection["id"]}},
+        #     )
 
-            # Insert the new collection and delete the old one
-            await collections_collection.insert_one(collection)
-            await collections_collection.delete_one({"id": collection_id})
-        else:
-            # Update the existing collection with new data, ensuring not to attempt to update `_id`
-            await collections_collection.update_one(
-                {"id": collection_id},
-                {"$set": {k: v for k, v in collection.items() if k != "_id"}},
-            )
+        #     # Insert the new collection and delete the old one
+        #     await collections_collection.insert_one(collection)
+        #     await collections_collection.delete_one({"id": collection_id})
+        # else:
+        #     # Update the existing collection with new data, ensuring not to attempt to update `_id`
+        #     await collections_collection.update_one(
+        #         {"id": collection_id},
+        #         {"$set": {k: v for k, v in collection.items() if k != "_id"}},
+        #     )
 
     async def delete_collection(self, collection_id: str):
         """
@@ -883,20 +905,21 @@ class DatabaseLogic:
         This ensures that when a collection is deleted, all of its items are also cleaned up from the database,
         maintaining data integrity and avoiding orphaned items without a parent collection.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
+        # items_collection = db[ITEMS_INDEX]
 
-        # Attempt to delete the collection document
-        collection_result = await collections_collection.delete_one(
-            {"id": collection_id}
-        )
-        if collection_result.deleted_count == 0:
-            # Collection not found, raise an error
-            raise NotFoundError(f"Collection {collection_id} not found")
+        # # Attempt to delete the collection document
+        # collection_result = await collections_collection.delete_one(
+        #     {"id": collection_id}
+        # )
+        # if collection_result.deleted_count == 0:
+        #     # Collection not found, raise an error
+        #     raise NotFoundError(f"Collection {collection_id} not found")
 
-        # Successfully found and deleted the collection, now delete its items
-        await items_collection.delete_many({"collection": collection_id})
+        # # Successfully found and deleted the collection, now delete its items
+        # await items_collection.delete_many({"collection": collection_id})
 
     async def bulk_async(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
@@ -915,17 +938,18 @@ class DatabaseLogic:
             `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
             index is refreshed after the bulk insert. The function does not return any value.
         """
-        db = self.client[DATABASE]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # items_collection = db[ITEMS_INDEX]
 
-        # Prepare the documents for insertion
-        documents = [item.dict(by_alias=True) for item in processed_items]
+        # # Prepare the documents for insertion
+        # documents = [item.dict(by_alias=True) for item in processed_items]
 
-        try:
-            await items_collection.insert_many(documents, ordered=False)
-        except BulkWriteError as e:
-            # Handle bulk write errors, e.g., due to duplicate keys
-            raise ConflictError(f"Bulk insert operation failed: {e.details}")
+        # try:
+        #     await items_collection.insert_many(documents, ordered=False)
+        # except BulkWriteError as e:
+        #     # Handle bulk write errors, e.g., due to duplicate keys
+        #     raise ConflictError(f"Bulk insert operation failed: {e.details}")
 
     def bulk_sync(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
@@ -944,17 +968,18 @@ class DatabaseLogic:
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
             True, the index is refreshed after the bulk insert. The function does not return any value.
         """
-        db = self.sync_client[DATABASE]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.sync_client[DATABASE]
+        # items_collection = db[ITEMS_INDEX]
 
-        # Prepare the documents for insertion
-        documents = [item.dict(by_alias=True) for item in processed_items]
+        # # Prepare the documents for insertion
+        # documents = [item.dict(by_alias=True) for item in processed_items]
 
-        try:
-            items_collection.insert_many(documents, ordered=False)
-        except BulkWriteError as e:
-            # Handle bulk write errors, e.g., due to duplicate keys
-            raise ConflictError(f"Bulk insert operation failed: {e.details}")
+        # try:
+        #     items_collection.insert_many(documents, ordered=False)
+        # except BulkWriteError as e:
+        #     # Handle bulk write errors, e.g., due to duplicate keys
+        #     raise ConflictError(f"Bulk insert operation failed: {e.details}")
 
     async def delete_items(self) -> None:
         """
@@ -962,14 +987,15 @@ class DatabaseLogic:
 
         Deletes all items from the 'items' collection in MongoDB.
         """
-        db = self.client[DATABASE]
-        items_collection = db[ITEMS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # items_collection = db[ITEMS_INDEX]
 
-        try:
-            await items_collection.delete_many({})
-            print("All items have been deleted.")
-        except Exception as e:
-            print(f"Error deleting items: {e}")
+        # try:
+        #     await items_collection.delete_many({})
+        #     print("All items have been deleted.")
+        # except Exception as e:
+        #     print(f"Error deleting items: {e}")
 
     async def delete_collections(self) -> None:
         """
@@ -977,11 +1003,12 @@ class DatabaseLogic:
 
         Deletes all collections from the 'collections' collection in MongoDB.
         """
-        db = self.client[DATABASE]
-        collections_collection = db[COLLECTIONS_INDEX]
+        pass
+        # db = self.client[DATABASE]
+        # collections_collection = db[COLLECTIONS_INDEX]
 
-        try:
-            await collections_collection.delete_many({})
-            print("All collections have been deleted.")
-        except Exception as e:
-            print(f"Error deleting collections: {e}")
+        # try:
+        #     await collections_collection.delete_many({})
+        #     print("All collections have been deleted.")
+        # except Exception as e:
+        #     print(f"Error deleting collections: {e}")
