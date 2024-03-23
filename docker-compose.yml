@@ -1,0 +1,26 @@
+version: '3.9'
+
+services:
+  app-duckdb:
+    container_name: stac-fastapi-duckdb
+    image: stac-utils/stac-fastapi-duckdb
+    restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8084
+      - RELOAD=true
+      - ENVIRONMENT=local
+      - WEB_CONCURRENCY=10
+      - PARQUET_FILE_PATH=/app/io-lulc-9-class/io-lulc-9-class.parquet
+      - BACKEND=duckdb
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./io-lulc-9-class:/app/io-lulc-9-class
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+    command:
+      bash -c "python -m stac_fastapi.duckdb.app"

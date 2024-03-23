@@ -155,7 +155,7 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         Retrieve a list of all collections from the MongoDB database, supporting pagination.
@@ -169,7 +169,7 @@ class DatabaseLogic:
             Tuple[List[Dict[str, Any]], Optional[str]]: A tuple containing a list of collections
             and an optional next token for pagination.
         """
-        pass
+        return {}
         # db = self.client[DATABASE]
         # collections_collection = db[COLLECTIONS_INDEX]
 
