@@ -1,13 +1,11 @@
 """Database logic."""
-import base64
 import logging
 import os
-import re
+import json
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
-# from bson import ObjectId
-# from pymongo.errors import BulkWriteError, PyMongoError
+from fastapi import HTTPException
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
@@ -99,7 +97,6 @@ class Geometry(Protocol):  # noqa
     type: str
     coordinates: Any
 
-
 class MongoSearchAdapter:
     """
     Adapter class to manage search filters and sorting for MongoDB queries.
@@ -139,6 +136,7 @@ class MongoSearchAdapter:
         self.filters.append(filter_condition)
 
 
+
 @attr.s
 class DatabaseLogic:
     """Database logic."""
@@ -169,31 +167,30 @@ class DatabaseLogic:
             Tuple[List[Dict[str, Any]], Optional[str]]: A tuple containing a list of collections
             and an optional next token for pagination.
         """
-        print("base_url: ", base_url)
-        return {}, None
-        # db = self.client[DATABASE]
-        # collections_collection = db[COLLECTIONS_INDEX]
+        # Assuming the PARQUET_FILE_PATH environment variable gives the path to the Parquet file,
+        # and the collection.json is in the same directory
+        parquet_file_path = os.getenv("PARQUET_FILE_PATH", "")
+        directory_path = os.path.dirname(parquet_file_path)
+        collection_json_path = os.path.join(directory_path, "collection.json")
 
-        # query: Dict[str, Any] = {}
-        # if token:
-        #     last_seen_id = decode_token(token)
-        #     query = {"id": {"$gt": last_seen_id}}
+        try:
+            with open(collection_json_path, 'r') as json_file:
+                collection = json.load(json_file)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"collection.json not found at path: {collection_json_path}"
+            )
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error decoding JSON from {collection_json_path}"
+            )
 
-        # cursor = collections_collection.find(query).sort("id", 1).limit(limit)
-        # collections = await cursor.to_list(length=limit)
+        next_token = None
+        serialized_collection = self.collection_serializer.db_to_stac(collection, base_url)
 
-        # next_token = None
-        # if len(collections) == limit:
-        #     # Assumes collections are sorted by 'id' in ascending order.
-        #     next_token = encode_token(collections[-1]["id"])
-        #     print(f"Next token (for next page): {next_token}")
-
-        # serialized_collections = [
-        #     self.collection_serializer.db_to_stac(serialize_doc(collection), base_url)
-        #     for collection in collections
-        # ]
-
-        # return serialized_collections, next_token
+        return [serialized_collection], next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.

@@ -3,10 +3,10 @@
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.core.core import (
-    BulkTransactionsClient,
+    # BulkTransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
-    TransactionsClient,
+    # TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.session import Session
@@ -16,7 +16,7 @@ from stac_fastapi.extensions.core import (
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
-    TransactionExtension,
+    # TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
@@ -34,19 +34,19 @@ filter_extension.conformance_classes.append(
 database_logic = DatabaseLogic()
 
 extensions = [
-    TransactionExtension(
-        client=TransactionsClient(
-            database=database_logic, session=session, settings=settings
-        ),
-        settings=settings,
-    ),
-    BulkTransactionExtension(
-        client=BulkTransactionsClient(
-            database=database_logic,
-            session=session,
-            settings=settings,
-        )
-    ),
+    # TransactionExtension(
+    #     client=TransactionsClient(
+    #         database=database_logic, session=session, settings=settings
+    #     ),
+    #     settings=settings,
+    # ),
+    # BulkTransactionExtension(
+    #     client=BulkTransactionsClient(
+    #         database=database_logic,
+    #         session=session,
+    #         settings=settings,
+    #     )
+    # ),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
