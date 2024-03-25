@@ -14,12 +14,12 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - PARQUET_FILE_PATH=/app/io-lulc-9-class/io-lulc-9-class.parquet
+      - STAC_FILE_PATH=/app/stac_collections
       - BACKEND=duckdb
     ports:
       - "8084:8084"
     volumes:
-      - ./io-lulc-9-class:/app/io-lulc-9-class
+      - ./stac_collections:/app/stac_collections
       - ./stac_fastapi:/app/stac_fastapi
     command:
       bash -c "python -m stac_fastapi.duckdb.app"
