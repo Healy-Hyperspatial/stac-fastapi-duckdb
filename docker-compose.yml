@@ -21,6 +21,5 @@ services:
     volumes:
       - ./io-lulc-9-class:/app/io-lulc-9-class
       - ./stac_fastapi:/app/stac_fastapi
-      - ./scripts:/app/scripts
     command:
       bash -c "python -m stac_fastapi.duckdb.app"
