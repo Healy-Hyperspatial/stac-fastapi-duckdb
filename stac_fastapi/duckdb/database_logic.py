@@ -141,7 +141,9 @@ class MongoSearchAdapter:
 class DatabaseLogic:
     """Database logic."""
 
-    client = DuckDBSettings().create_client
+    # client = DuckDBSettings().create_client
+
+    stac_file_path = os.getenv("STAC_FILE_PATH", "")
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer
@@ -167,30 +169,35 @@ class DatabaseLogic:
             Tuple[List[Dict[str, Any]], Optional[str]]: A tuple containing a list of collections
             and an optional next token for pagination.
         """
-        # Assuming the PARQUET_FILE_PATH environment variable gives the path to the Parquet file,
-        # and the collection.json is in the same directory
-        parquet_file_path = os.getenv("PARQUET_FILE_PATH", "")
-        directory_path = os.path.dirname(parquet_file_path)
-        collection_json_path = os.path.join(directory_path, "collection.json")
+        collections = []
 
-        try:
-            with open(collection_json_path, 'r') as json_file:
-                collection = json.load(json_file)
-        except FileNotFoundError:
+        if not os.path.exists(self.stac_file_path):
             raise HTTPException(
                 status_code=404, 
-                detail=f"collection.json not found at path: {collection_json_path}"
-            )
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Error decoding JSON from {collection_json_path}"
+                detail=f"STAC_FILE_PATH directory not found at path: {self.stac_file_path}"
             )
 
+        # Iterate through each subdirectory under STAC_FILE_PATH to find collection.json files
+        for collection_name in os.listdir(self.stac_file_path):
+            collection_dir = os.path.join(self.stac_file_path, collection_name)
+            if os.path.isdir(collection_dir):
+                collection_json_path = os.path.join(collection_dir, "collection.json")
+                if os.path.exists(collection_json_path):
+                    try:
+                        with open(collection_json_path, 'r') as json_file:
+                            collection = json.load(json_file)
+                            serialized_collection = self.collection_serializer.db_to_stac(collection, base_url)
+                            collections.append(serialized_collection)
+                    except json.JSONDecodeError:
+                        print(f"Error decoding JSON from {collection_json_path}")
+                        continue
+                else:
+                    continue  # Skip directories without a collection.json file
+
+        # Simulating pagination token
         next_token = None
-        serialized_collection = self.collection_serializer.db_to_stac(collection, base_url)
 
-        return [serialized_collection], next_token
+        return collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.

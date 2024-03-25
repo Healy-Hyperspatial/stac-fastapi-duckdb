@@ -15,7 +15,7 @@ from stac_fastapi.extensions.core import (
     FieldsExtension,
     FilterExtension,
     SortExtension,
-    TokenPaginationExtension,
+    # TokenPaginationExtension,
     # TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
@@ -50,7 +50,7 @@ extensions = [
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
-    TokenPaginationExtension(),
+    # TokenPaginationExtension(),
     ContextExtension(),
     filter_extension,
 ]
