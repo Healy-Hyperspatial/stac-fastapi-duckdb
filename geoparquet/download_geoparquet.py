@@ -1,4 +1,7 @@
+"""python download_geoparquet.py <collection_id>."""
+
 import sys
+
 import geopandas
 import planetary_computer
 import pystac_client
@@ -20,7 +23,9 @@ try:
     collection = catalog.get_collection(collection_id)
     asset = collection.assets["geoparquet-items"]
 except KeyError:
-    print(f"Collection '{collection_id}' not found or does not have a 'geoparquet-items' asset.")
+    print(
+        f"Collection '{collection_id}' not found or does not have a 'geoparquet-items' asset."
+    )
     sys.exit(1)
 
 # Read the GeoParquet data into a GeoDataFrame

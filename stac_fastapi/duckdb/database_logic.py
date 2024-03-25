@@ -1,83 +1,24 @@
 """Database logic."""
+import json
 import logging
 import os
-import json
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
 from fastapi import HTTPException
 from stac_fastapi.core import serializers
-from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.utilities import bbox2polygon
+
+# from stac_fastapi.core.extensions import filter
+# from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.extensions.core import SortExtension
-from stac_fastapi.duckdb.config import DuckDBSettings
-from stac_fastapi.duckdb.utilities import decode_token, encode_token, serialize_doc
-from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
+
+# from stac_fastapi.duckdb.config import DuckDBSettings
 
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
-
-# COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-# ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
-# DATABASE = os.getenv("MONGO_DB", "admin")
-
-
-async def create_collection_index():
-    """
-    Ensure indexes for the collections collection in MongoDB using the asynchronous client.
-
-    Returns:
-        None
-    """
-    pass
-    # client = AsyncSearchSettings().create_client
-    # if client:
-    #     try:
-    #         db = client[DATABASE]
-    #         await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-    #         print(f"Index created successfully for collection: {COLLECTIONS_INDEX}.")
-    #     except Exception as e:
-    #         # Handle exceptions, which could be due to existing index conflicts, etc.
-    #         print(
-    #             f"An error occurred while creating indexe for collection {COLLECTIONS_INDEX}: {e}"
-    #         )
-    #     finally:
-    #         print(f"Closing client: {client}")
-    #         client.close()
-    # else:
-    #     print("Failed to create MongoDB client.")
-
-
-async def create_item_index():
-    """
-    Ensure indexes for a specific collection of items in MongoDB using the asynchronous client.
-
-    Args:
-        collection_id (str): Collection identifier used to derive the MongoDB collection name for items.
-
-    Returns:
-        None
-    """
-    pass
-    # client = AsyncSearchSettings().create_client
-
-    # if client:
-    #     db = client[DATABASE]
-    #     collection = db[ITEMS_INDEX]
-    #     try:
-    #         await collection.create_index([("properties.datetime", -1)])
-    #         await collection.create_index([("id", 1)], unique=True)
-    #         await collection.create_index([("geometry", "2dsphere")])
-    #         print(f"Indexes created successfully for collection: {ITEMS_INDEX}.")
-    #     except Exception as e:
-    #         # Handle exceptions, which could be due to existing index conflicts, etc.
-    #         print(
-    #             f"An error occurred while creating indexes for collection {ITEMS_INDEX}: {e}"
-    #         )
-    #     finally:
-    #         client.close()
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -96,6 +37,7 @@ def mk_item_id(item_id: str, collection_id: str):
 class Geometry(Protocol):  # noqa
     type: str
     coordinates: Any
+
 
 class MongoSearchAdapter:
     """
@@ -136,7 +78,6 @@ class MongoSearchAdapter:
         self.filters.append(filter_condition)
 
 
-
 @attr.s
 class DatabaseLogic:
     """Database logic."""
@@ -173,8 +114,8 @@ class DatabaseLogic:
 
         if not os.path.exists(self.stac_file_path):
             raise HTTPException(
-                status_code=404, 
-                detail=f"STAC_FILE_PATH directory not found at path: {self.stac_file_path}"
+                status_code=404,
+                detail=f"STAC_FILE_PATH directory not found at path: {self.stac_file_path}",
             )
 
         # Iterate through each subdirectory under STAC_FILE_PATH to find collection.json files
@@ -184,9 +125,13 @@ class DatabaseLogic:
                 collection_json_path = os.path.join(collection_dir, "collection.json")
                 if os.path.exists(collection_json_path):
                     try:
-                        with open(collection_json_path, 'r') as json_file:
+                        with open(collection_json_path, "r") as json_file:
                             collection = json.load(json_file)
-                            serialized_collection = self.collection_serializer.db_to_stac(collection, base_url)
+                            serialized_collection = (
+                                self.collection_serializer.db_to_stac(
+                                    collection, base_url
+                                )
+                            )
                             collections.append(serialized_collection)
                     except json.JSONDecodeError:
                         print(f"Error decoding JSON from {collection_json_path}")
@@ -198,7 +143,7 @@ class DatabaseLogic:
         next_token = None
 
         return collections, next_token
-    
+
     async def find_collection(self, collection_id: str) -> dict:
         """
         Find and return a collection from the database.
@@ -213,8 +158,7 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
         """
-        stac_file_path = os.getenv("STAC_FILE_PATH", "")
-        collection_dir = os.path.join(stac_file_path, collection_id)
+        collection_dir = os.path.join(self.stac_file_path, collection_id)
         collection_json_path = os.path.join(collection_dir, "collection.json")
 
         # Check if the collection.json file exists
@@ -222,11 +166,14 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         try:
-            with open(collection_json_path, 'r') as json_file:
+            with open(collection_json_path, "r") as json_file:
                 collection = json.load(json_file)
                 return collection
         except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail=f"Error decoding JSON from {collection_json_path}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error decoding JSON from {collection_json_path}",
+            )
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -241,9 +188,10 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
         """
+        return {}
         # conn.from_parquet(parquet_file_path)
-        client = self.client()
-        print(client)
+        # client = self.client()
+        # print(client)
         # db = self.client[DATABASE]
         # collection = db[ITEMS_INDEX]
 

@@ -2,26 +2,24 @@
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.core.core import (
-    # BulkTransactionsClient,
+from stac_fastapi.core.core import (  # BulkTransactionsClient,; TransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
-    # TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core import (
+from stac_fastapi.extensions.core import (  # TokenPaginationExtension,; TransactionExtension,
     ContextExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
-    # TokenPaginationExtension,
-    # TransactionExtension,
 )
-from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
 from stac_fastapi.duckdb.config import DuckDBSettings
 from stac_fastapi.duckdb.database_logic import DatabaseLogic
+
+# from stac_fastapi.extensions.third_party import BulkTransactionExtension
+
 
 settings = DuckDBSettings()
 session = Session.create_from_settings(settings)
