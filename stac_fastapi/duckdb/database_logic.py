@@ -198,6 +198,35 @@ class DatabaseLogic:
         next_token = None
 
         return collections, next_token
+    
+    async def find_collection(self, collection_id: str) -> dict:
+        """
+        Find and return a collection from the database.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to be found.
+
+        Returns:
+            dict: The found collection, represented as a dictionary.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+        """
+        stac_file_path = os.getenv("STAC_FILE_PATH", "")
+        collection_dir = os.path.join(stac_file_path, collection_id)
+        collection_json_path = os.path.join(collection_dir, "collection.json")
+
+        # Check if the collection.json file exists
+        if not os.path.exists(collection_json_path):
+            raise NotFoundError(f"Collection {collection_id} not found")
+
+        try:
+            with open(collection_json_path, 'r') as json_file:
+                collection = json.load(json_file)
+                return collection
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail=f"Error decoding JSON from {collection_json_path}")
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -806,35 +835,6 @@ class DatabaseLogic:
         #     raise ConflictError(f"Failed to create collection {collection['id']}: {e}")
 
         # collection = serialize_doc(collection)
-
-    async def find_collection(self, collection_id: str) -> dict:
-        """
-        Find and return a collection from the database.
-
-        Args:
-            self: The instance of the object calling this function.
-            collection_id (str): The ID of the collection to be found.
-
-        Returns:
-            dict: The found collection, represented as a dictionary.
-
-        Raises:
-            NotFoundError: If the collection with the given `collection_id` is not found in the database.
-        """
-        pass
-        # db = self.client[DATABASE]
-        # collections_collection = db[COLLECTIONS_INDEX]
-
-        # try:
-        #     collection = await collections_collection.find_one({"id": collection_id})
-        #     if not collection:
-        #         raise NotFoundError(f"Collection {collection_id} not found")
-        #     serialized_collection = serialize_doc(collection)
-        #     return serialized_collection
-        # except PyMongoError as e:
-        #     # This is a general catch-all for MongoDB errors; adjust as needed for more specific handling
-        #     print(f"Failed to find collection {collection_id}: {e}")
-        #     raise NotFoundError(f"Collection {collection_id} not found")
 
     async def update_collection(
         self, collection_id: str, collection: Collection, refresh: bool = False
