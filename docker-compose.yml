@@ -16,8 +16,9 @@ services:
       - WEB_CONCURRENCY=10
       - STAC_FILE_PATH=/app/stac_collections
       - BACKEND=duckdb
+      - PARQUET_FILE_PATH=/app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet
     ports:
-      - "8084:8084"
+      - "8085:8084"
     volumes:
       - ./stac_collections:/app/stac_collections
       - ./stac_fastapi:/app/stac_fastapi

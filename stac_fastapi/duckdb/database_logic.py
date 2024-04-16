@@ -14,7 +14,7 @@ from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
 
-# from stac_fastapi.duckdb.config import DuckDBSettings
+from stac_fastapi.duckdb.config import DuckDBSettings
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +39,14 @@ class Geometry(Protocol):  # noqa
     coordinates: Any
 
 
-class MongoSearchAdapter:
+class DuckDBSearchAdapter:
     """
     Adapter class to manage search filters and sorting for MongoDB queries.
 
     Attributes:
         filters (list): A list of filter conditions to be applied to the MongoDB query.
         sort (list): A list of tuples specifying field names and their corresponding sort directions
-                     for MongoDB sorting.
+                     for DuckDB sorting.
 
     Methods:
         add_filter(filter_condition): Adds a new filter condition to the filters list.
@@ -56,7 +56,7 @@ class MongoSearchAdapter:
 
     def __init__(self):
         """
-        Initialize the MongoSearchAdapter with default sorting criteria.
+        Initialize the DuckDBSearchAdapter with default sorting criteria.
 
         The default sort order is by 'properties.datetime' in descending order, followed by 'id' in descending order,
         and finally by 'collection' in descending order. This matches typical STAC item queries where the most recent items
@@ -78,20 +78,14 @@ class MongoSearchAdapter:
         self.filters.append(filter_condition)
 
 
-@attr.s
+@attr.s(auto_attribs=True)
 class DatabaseLogic:
-    """Database logic."""
-
-    # client = DuckDBSettings().create_client
-
-    stac_file_path = os.getenv("STAC_FILE_PATH", "")
-
-    item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer
-    )
-    collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer
-    )
+    """Database logic managing DuckDB connections."""
+    settings = DuckDBSettings.get_instance()  # Access the singleton instance
+    conn = settings.conn 
+    stac_file_path: str = os.getenv("STAC_FILE_PATH", "")
+    item_serializer: Type[serializers.ItemSerializer] = serializers.ItemSerializer
+    collection_serializer: Type[serializers.CollectionSerializer] = serializers.CollectionSerializer
 
     """CORE LOGIC"""
 
@@ -188,10 +182,37 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
         """
-        return {}
-        # conn.from_parquet(parquet_file_path)
-        # client = self.client()
-        # print(client)
+        # try:
+        #     query = """
+        #     SELECT table_name, table_schema FROM information_schema.tables
+        #     WHERE table_schema = 'main' OR table_schema = 'temp';
+        #     """
+        #     query = "SELECT * FROM items LIMIT 1;"
+        #     result = self.conn.execute(query).fetchall()
+        #     print(result)
+
+        #     results = self.conn.execute(query).fetchall()
+        #     if results:
+        #         print("Available tables:")
+        #         for table in results:
+        #             # Accessing tuple data by index
+        #             print(f"Table: {table[0]} in Schema: {table[1]}")
+        #     else:
+        #         print("No tables found.")
+
+        # except Exception as e:
+        #     print("Error querying tables:", e)
+        try:
+            # Execute a query to get a specific item
+            item = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+            if item:
+                print(item)
+                return item
+            else:
+                raise HTTPException(status_code=404, detail="Item not found")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
         # db = self.client[DATABASE]
         # collection = db[ITEMS_INDEX]
 
@@ -204,30 +225,30 @@ class DatabaseLogic:
         #     )
 
         # # Serialize the MongoDB document to make it JSON serializable
-        # serialized_item = serialize_doc(item)
-        # return serialized_item
+        serialized_item = serialize_doc(item)
+        return serialized_item
 
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""
-        return MongoSearchAdapter()
+        return DuckDBSearchAdapter()
 
     @staticmethod
-    def apply_ids_filter(search: MongoSearchAdapter, item_ids: List[str]):
+    def apply_ids_filter(search: DuckDBSearchAdapter, item_ids: List[str]):
         """Database logic to search a list of STAC item ids."""
         pass
         # search.add_filter({"id": {"$in": item_ids}})
         # return search
 
     @staticmethod
-    def apply_collections_filter(search: MongoSearchAdapter, collection_ids: List[str]):
+    def apply_collections_filter(search: DuckDBSearchAdapter, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
         pass
         # search.add_filter({"collection": {"$in": collection_ids}})
         # return search
 
     @staticmethod
-    def apply_datetime_filter(search: MongoSearchAdapter, datetime_search):
+    def apply_datetime_filter(search: DuckDBSearchAdapter, datetime_search):
         """Apply a filter to search based on datetime field.
 
         Args:
@@ -252,7 +273,7 @@ class DatabaseLogic:
         # return search
 
     @staticmethod
-    def apply_bbox_filter(search: MongoSearchAdapter, bbox: List):
+    def apply_bbox_filter(search: DuckDBSearchAdapter, bbox: List):
         """Filter search results based on bounding box.
 
         Args:
@@ -281,7 +302,7 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_intersects_filter(
-        search: MongoSearchAdapter,
+        search: DuckDBSearchAdapter,
         intersects: Geometry,
     ):
         """Filter search results based on intersecting geometry.
@@ -305,7 +326,7 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_stacql_filter(
-        search: MongoSearchAdapter, op: str, field: str, value: float
+        search: DuckDBSearchAdapter, op: str, field: str, value: float
     ):
         """Filter search results based on a comparison between a field and a value.
 
@@ -463,7 +484,7 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_cql2_filter(
-        search_adapter: "MongoSearchAdapter", _filter: Optional[Dict[str, Any]]
+        search_adapter: "DuckDBSearchAdapter", _filter: Optional[Dict[str, Any]]
     ):
         """
         Apply a CQL2 JSON filter to the MongoDB search adapter.
@@ -471,11 +492,11 @@ class DatabaseLogic:
         This method translates a CQL2 JSON filter into MongoDB's query syntax and adds it to the adapter's filters.
 
         Args:
-            search_adapter (MongoSearchAdapter): The MongoDB search adapter to which the filter will be applied.
+            search_adapter (DuckDBSearchAdapter): The MongoDB search adapter to which the filter will be applied.
             _filter (Optional[Dict[str, Any]]): The CQL2 filter as a dictionary. If None, no action is taken.
 
         Returns:
-            MongoSearchAdapter: The search adapter with the CQL2 filter applied.
+            DuckDBSearchAdapter: The search adapter with the CQL2 filter applied.
         """
         pass
         # if _filter is not None:
@@ -514,7 +535,7 @@ class DatabaseLogic:
 
     async def execute_search(
         self,
-        search: MongoSearchAdapter,
+        search: DuckDBSearchAdapter,
         limit: int,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
@@ -542,6 +563,7 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
+        client = self.client
         pass
         # db = self.client[DATABASE]
         # collection = db[ITEMS_INDEX]
