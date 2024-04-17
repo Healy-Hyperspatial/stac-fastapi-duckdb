@@ -1,22 +1,20 @@
 """Database logic."""
-import base64
-from datetime import datetime, date, timedelta
 import json
 import logging
-import numpy as np
-import pandas as pd
 import os
+from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
+import numpy as np
+import pandas as pd
 from fastapi import HTTPException
-from stac_fastapi.core import serializers
+from shapely.geometry import mapping
 
 # from stac_fastapi.core.extensions import filter
 # from stac_fastapi.core.utilities import bbox2polygon
 from shapely.wkb import loads
-from shapely.geometry import mapping
-
+from stac_fastapi.core import serializers
 from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
@@ -88,11 +86,14 @@ class DuckDBSearchAdapter:
 @attr.s(auto_attribs=True)
 class DatabaseLogic:
     """Database logic managing DuckDB connections."""
+
     settings = DuckDBSettings.get_instance()  # Access the singleton instance
-    conn = settings.conn 
+    conn = settings.conn
     stac_file_path: str = os.getenv("STAC_FILE_PATH", "")
     item_serializer: Type[serializers.ItemSerializer] = serializers.ItemSerializer
-    collection_serializer: Type[serializers.CollectionSerializer] = serializers.CollectionSerializer
+    collection_serializer: Type[
+        serializers.CollectionSerializer
+    ] = serializers.CollectionSerializer
 
     """CORE LOGIC"""
 
@@ -175,14 +176,14 @@ class DatabaseLogic:
                 status_code=500,
                 detail=f"Error decoding JSON from {collection_json_path}",
             )
-        
+
     def decode_geometry(self, int_list):
-        # Convert the integer list to bytes
+        """Convert the integer list to bytes."""
         geom_bytes = bytes(int_list)
-        
+
         # Use Shapely to decode the WKB format
         geometry_object = loads(geom_bytes)
-        
+
         # Convert to GeoJSON format
         return mapping(geometry_object)
 
@@ -192,7 +193,7 @@ class DatabaseLogic:
             if isinstance(value, np.ndarray):
                 return value.tolist()  # Convert numpy arrays to list
             if pd.isna(value):  # Check if the value is NaN or NaT
-                return None 
+                return None
             if isinstance(value, pd.Timestamp):
                 return value.isoformat()  # Convert Timestamp to ISO format string
             elif isinstance(value, np.generic):
@@ -203,13 +204,17 @@ class DatabaseLogic:
                 elif np.issubdtype(value.dtype, np.bool_):
                     return bool(value.item())
                 elif np.issubdtype(value.dtype, np.datetime64):
-                    return pd.to_datetime(value).isoformat()  # Ensure datetime64 types are also converted
+                    return pd.to_datetime(
+                        value
+                    ).isoformat()  # Ensure datetime64 types are also converted
                 elif np.issubdtype(value.dtype, np.complex):
                     return str(value.item())  # Convert complex numbers to string
                 else:
                     return value.item()  # Last resort, convert directly
             elif isinstance(value, (datetime, date)):
-                return value.isoformat()  # Additional handling for native Python datetime types
+                return (
+                    value.isoformat()
+                )  # Additional handling for native Python datetime types
             return value
         except Exception as e:
             print(f"Failed conversion for value {value} of type {type(value)}: {e}")
@@ -233,40 +238,44 @@ class DatabaseLogic:
 
             df = self.conn.execute(query, [item_id]).df()
             if df.empty:
-                raise HTTPException(status_code=404, detail=f"Item {item_id} in collection {collection_id} does not exist.")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Item {item_id} in collection {collection_id} does not exist.",
+                )
 
-            print(df)
-            print("HI")
             # Decode the WKB geometry to a shapely object
-            geom_int_list = df.at[0, 'geometry']
+            geom_int_list = df.at[0, "geometry"]
             geojson_geometry = self.decode_geometry(geom_int_list)
 
-            print(geojson_geometry)
-            print("HI")
-            # Initialize the STAC item dictionary
             item = {
                 "type": "Feature",
                 "stac_version": "1.0.0",
-                "stac_extensions":  self.convert_type(df.at[0, "stac_extensions"]),
+                "stac_extensions": self.convert_type(df.at[0, "stac_extensions"]),
                 "id": item_id,
                 "bbox": df.at[0, "bbox"],
                 "collection": collection_id,
                 "properties": {},
                 "geometry": geojson_geometry,
-                "assets": {},
-                "links": []
+                "assets": df.at[0, "assets"],
+                "links": [],
             }
-
-            print(item)
 
             # Dynamically populate properties with improved error handling
             for column in df.columns:
-                print(column)
-                if column not in ['id', 'geometry', 'assets', 'links', 'type', 'bbox', 'stac_version', 'stac_extensions']:  # Exclude known non-property fields
-                # if column in ['start_datetime', 'end_datetime', 'datetime', 'proj:epsg', 'proj:bbox']:
-                    print(df.at[0, column])
+                if column not in [
+                    "id",
+                    "geometry",
+                    "assets",
+                    "links",
+                    "type",
+                    "bbox",
+                    "stac_version",
+                    "stac_extensions",
+                ]:
                     converted_value = self.convert_type(df.at[0, column])
-                    item['properties'][column] = converted_value if converted_value is not None else None 
+                    item["properties"][column] = (
+                        converted_value if converted_value is not None else None
+                    )
 
             return item
         except Exception as e:
@@ -285,7 +294,9 @@ class DatabaseLogic:
         # return search
 
     @staticmethod
-    def apply_collections_filter(search: DuckDBSearchAdapter, collection_ids: List[str]):
+    def apply_collections_filter(
+        search: DuckDBSearchAdapter, collection_ids: List[str]
+    ):
         """Database logic to search a list of STAC collection ids."""
         pass
         # search.add_filter({"collection": {"$in": collection_ids}})
@@ -607,7 +618,6 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        client = self.client
         pass
         # db = self.client[DATABASE]
         # collection = db[ITEMS_INDEX]
