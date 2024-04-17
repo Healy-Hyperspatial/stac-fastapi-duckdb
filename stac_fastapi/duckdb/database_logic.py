@@ -1,4 +1,5 @@
 """Database logic."""
+import base64
 import json
 import logging
 import os
@@ -182,51 +183,24 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
         """
-        # try:
-        #     query = """
-        #     SELECT table_name, table_schema FROM information_schema.tables
-        #     WHERE table_schema = 'main' OR table_schema = 'temp';
-        #     """
-        #     query = "SELECT * FROM items LIMIT 1;"
-        #     result = self.conn.execute(query).fetchall()
-        #     print(result)
-
-        #     results = self.conn.execute(query).fetchall()
-        #     if results:
-        #         print("Available tables:")
-        #         for table in results:
-        #             # Accessing tuple data by index
-        #             print(f"Table: {table[0]} in Schema: {table[1]}")
-        #     else:
-        #         print("No tables found.")
-
-        # except Exception as e:
-        #     print("Error querying tables:", e)
         try:
-            # Execute a query to get a specific item
-            item = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+            cursor = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            item = cursor.fetchone()
             if item:
-                print(item)
-                return item
+                columns = [description[0] for description in cursor.description]
+                item_dict = {}
+                for col, val in zip(columns, item):
+                    # Check if the value is bytes, if so, convert it to a base64 string
+                    if isinstance(val, bytes):
+                        val = base64.b64encode(val).decode('utf-8')
+                    item_dict[col] = val
+                return item_dict
             else:
-                raise HTTPException(status_code=404, detail="Item not found")
+                raise NotFoundError(
+                    f"Item {item_id} in collection {collection_id} does not exist."
+                )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-
-        # db = self.client[DATABASE]
-        # collection = db[ITEMS_INDEX]
-
-        # # Adjusted to include collection_id in the query to fetch items within a specific collection
-        # item = await collection.find_one({"id": item_id, "collection": collection_id})
-        # if not item:
-        #     # If the item is not found, raise NotFoundError
-        #     raise NotFoundError(
-        #         f"Item {item_id} in collection {collection_id} does not exist."
-        #     )
-
-        # # Serialize the MongoDB document to make it JSON serializable
-        serialized_item = serialize_doc(item)
-        return serialized_item
 
     @staticmethod
     def make_search():

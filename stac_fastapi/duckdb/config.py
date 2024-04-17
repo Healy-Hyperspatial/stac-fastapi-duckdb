@@ -1,6 +1,6 @@
 import duckdb
 import os
-from pydantic import validator, BaseModel, root_validator
+from pydantic import BaseModel, validator
 from fastapi import HTTPException
 from typing import Set, Any
 from stac_fastapi.types.config import ApiSettings
@@ -8,7 +8,6 @@ from stac_fastapi.types.config import ApiSettings
 _forbidden_fields: Set[str] = {"type"}
 
 class DuckDBSettings(ApiSettings):
-
     # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
@@ -16,7 +15,7 @@ class DuckDBSettings(ApiSettings):
     conn: Any = None
     relation: Any = None
 
-    _instance = None  # private class variable to hold the singleton instance
+    _instance = None  # Private class variable to hold the singleton instance
 
     class Config:
         arbitrary_types_allowed = True
@@ -26,9 +25,17 @@ class DuckDBSettings(ApiSettings):
         try:
             # Attempt a simple operation to check if the connection is alive
             if cls._instance is None or (v is None or not v.execute("SELECT 1").fetchall()):
-                return duckdb.connect(database=":memory:", read_only=False)
-        except (Exception, duckdb.Error):
-            return duckdb.connect(database=":memory:", read_only=False)
+                # Connect to DuckDB, install and load the spatial extension
+                conn = duckdb.connect(database=":memory:", read_only=False)
+                conn.execute("INSTALL spatial;")
+                conn.execute("LOAD spatial;")
+                return conn
+        except (Exception, duckdb.Error) as e:
+            # If there is an error, reconnect and load spatial again
+            conn = duckdb.connect(database=":memory:", read_only=False)
+            conn.execute("INSTALL spatial;")
+            conn.execute("LOAD spatial;")
+            return conn
         return v
 
     @validator('relation', pre=True, always=True)
@@ -41,7 +48,8 @@ class DuckDBSettings(ApiSettings):
             if conn is not None:
                 try:
                     table_name = "items"  # Set your desired table name here
-                    conn.execute(f"DROP TABLE IF EXISTS {table_name};")  # Optionally clear the old table
+                    # Drop existing table and create a new one from the Parquet file
+                    conn.execute(f"DROP TABLE IF EXISTS {table_name};")
                     conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{parquet_file_path}');")
                     return conn.table(table_name)  # Return the new table as a relation
                 except Exception as e:
