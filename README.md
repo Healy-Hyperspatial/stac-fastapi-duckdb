@@ -4,11 +4,10 @@
 
 <p align="left">
   <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
-  <p align="left"><b>DuckDB backend for the stac-fastapi project.</b></p>
 </p>
 
 
-## DuckDB backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
+### DuckDB backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
 
 ### Working so far:
 - GET /collections   
