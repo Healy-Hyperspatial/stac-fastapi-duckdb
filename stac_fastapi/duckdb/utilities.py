@@ -1,19 +1,22 @@
-from datetime import datetime, date
+"""Database utility functions."""
+from datetime import date, datetime
+
 import numpy as np
 import pandas as pd
-
 from shapely.geometry import mapping
 from shapely.wkb import loads
 
+
 def decode_geometry(int_list):
-        """Convert the integer list to bytes."""
-        geom_bytes = bytes(int_list)
+    """Convert the integer list to bytes."""
+    geom_bytes = bytes(int_list)
 
-        # Use Shapely to decode the WKB format
-        geometry_object = loads(geom_bytes)
+    # Use Shapely to decode the WKB format
+    geometry_object = loads(geom_bytes)
 
-        # Convert to GeoJSON format
-        return mapping(geometry_object)
+    # Convert to GeoJSON format
+    return mapping(geometry_object)
+
 
 def convert_type(value):
     """Convert unsupported numpy types to native Python types for JSON serialization."""
@@ -47,8 +50,10 @@ def convert_type(value):
     except Exception as e:
         print(f"Failed conversion for value {value} of type {type(value)}: {e}")
         return None  # Or choose to return a default value or placeholder
-    
+
+
 def create_stac_item(df, item_id, collection_id):
+    """Create stac item."""
     # Decode the WKB geometry to a shapely object
     geom_int_list = df.at[0, "geometry"]
     geojson_geometry = decode_geometry(geom_int_list)

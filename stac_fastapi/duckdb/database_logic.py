@@ -313,7 +313,7 @@ class DatabaseLogic:
                                 with direction being 1 for 'asc' and -1 for 'desc'.
                                 Returns an empty list if no sort criteria are provided.
         """
-        pass
+        return sortby
         # if not sortby:
         #     return []
 
@@ -358,6 +358,8 @@ class DatabaseLogic:
         """
         if not collection_ids:
             raise HTTPException(status_code=400, detail="No collection IDs provided.")
+        
+        print("SORT: ", sort)
 
         # Base query construction
         base_query = "SELECT * FROM items"
