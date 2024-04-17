@@ -10,6 +10,9 @@ install_requires = [
     "stac-fastapi.core==2.1.0",
     "uvicorn",
     "starlette",
+    "numpy",
+    "pandas",
+    "shapely",
 ]
 
 extra_reqs = {

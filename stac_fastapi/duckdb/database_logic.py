@@ -1,7 +1,10 @@
 """Database logic."""
 import base64
+from datetime import datetime, date, timedelta
 import json
 import logging
+import numpy as np
+import pandas as pd
 import os
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
@@ -11,6 +14,9 @@ from stac_fastapi.core import serializers
 
 # from stac_fastapi.core.extensions import filter
 # from stac_fastapi.core.utilities import bbox2polygon
+from shapely.wkb import loads
+from shapely.geometry import mapping
+
 from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
@@ -169,8 +175,47 @@ class DatabaseLogic:
                 status_code=500,
                 detail=f"Error decoding JSON from {collection_json_path}",
             )
+        
+    def decode_geometry(self, int_list):
+        # Convert the integer list to bytes
+        geom_bytes = bytes(int_list)
+        
+        # Use Shapely to decode the WKB format
+        geometry_object = loads(geom_bytes)
+        
+        # Convert to GeoJSON format
+        return mapping(geometry_object)
 
-    async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
+    def convert_type(self, value):
+        """Convert unsupported numpy types to native Python types for JSON serialization."""
+        try:
+            if isinstance(value, np.ndarray):
+                return value.tolist()  # Convert numpy arrays to list
+            if pd.isna(value):  # Check if the value is NaN or NaT
+                return None 
+            if isinstance(value, pd.Timestamp):
+                return value.isoformat()  # Convert Timestamp to ISO format string
+            elif isinstance(value, np.generic):
+                if np.issubdtype(value.dtype, np.floating):
+                    return float(value.item())
+                elif np.issubdtype(value.dtype, np.integer):
+                    return int(value.item())
+                elif np.issubdtype(value.dtype, np.bool_):
+                    return bool(value.item())
+                elif np.issubdtype(value.dtype, np.datetime64):
+                    return pd.to_datetime(value).isoformat()  # Ensure datetime64 types are also converted
+                elif np.issubdtype(value.dtype, np.complex):
+                    return str(value.item())  # Convert complex numbers to string
+                else:
+                    return value.item()  # Last resort, convert directly
+            elif isinstance(value, (datetime, date)):
+                return value.isoformat()  # Additional handling for native Python datetime types
+            return value
+        except Exception as e:
+            print(f"Failed conversion for value {value} of type {type(value)}: {e}")
+            return None  # Or choose to return a default value or placeholder
+
+    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -178,27 +223,52 @@ class DatabaseLogic:
             item_id (str): The id of the Item.
 
         Returns:
-            item (Dict): A dictionary containing the source data for the Item.
+            dict: A STAC item as a dictionary.
 
         Raises:
-            NotFoundError: If the specified Item does not exist in the Collection.
+            HTTPException: If the specified Item does not exist in the Collection.
         """
         try:
-            cursor = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-            item = cursor.fetchone()
-            if item:
-                columns = [description[0] for description in cursor.description]
-                item_dict = {}
-                for col, val in zip(columns, item):
-                    # Check if the value is bytes, if so, convert it to a base64 string
-                    if isinstance(val, bytes):
-                        val = base64.b64encode(val).decode('utf-8')
-                    item_dict[col] = val
-                return item_dict
-            else:
-                raise NotFoundError(
-                    f"Item {item_id} in collection {collection_id} does not exist."
-                )
+            query = "SELECT * FROM items WHERE id = ? LIMIT 1"
+
+            df = self.conn.execute(query, [item_id]).df()
+            if df.empty:
+                raise HTTPException(status_code=404, detail=f"Item {item_id} in collection {collection_id} does not exist.")
+
+            print(df)
+            print("HI")
+            # Decode the WKB geometry to a shapely object
+            geom_int_list = df.at[0, 'geometry']
+            geojson_geometry = self.decode_geometry(geom_int_list)
+
+            print(geojson_geometry)
+            print("HI")
+            # Initialize the STAC item dictionary
+            item = {
+                "type": "Feature",
+                "stac_version": "1.0.0",
+                "stac_extensions":  self.convert_type(df.at[0, "stac_extensions"]),
+                "id": item_id,
+                "bbox": df.at[0, "bbox"],
+                "collection": collection_id,
+                "properties": {},
+                "geometry": geojson_geometry,
+                "assets": {},
+                "links": []
+            }
+
+            print(item)
+
+            # Dynamically populate properties with improved error handling
+            for column in df.columns:
+                print(column)
+                if column not in ['id', 'geometry', 'assets', 'links', 'type', 'bbox', 'stac_version', 'stac_extensions']:  # Exclude known non-property fields
+                # if column in ['start_datetime', 'end_datetime', 'datetime', 'proj:epsg', 'proj:bbox']:
+                    print(df.at[0, column])
+                    converted_value = self.convert_type(df.at[0, column])
+                    item['properties'][column] = converted_value if converted_value is not None else None 
+
+            return item
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

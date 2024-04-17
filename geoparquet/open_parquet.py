@@ -15,6 +15,12 @@ relation = conn.from_parquet(parquet_file_path)
 print("First 5 rows of the dataset:")
 print(relation.limit(5).df())
 
+geometry_data = relation.project("geometry").limit(5).df()
+
+# Print the result
+print("First 5 geometry entries:")
+print(geometry_data)
+
 # Count the total number of rows in the dataset
 total_rows = relation.aggregate("count(*) as total_rows").df()
 print(f"\nTotal number of rows: {total_rows['total_rows'][0]}")
