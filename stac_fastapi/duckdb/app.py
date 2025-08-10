@@ -66,8 +66,6 @@ except Exception as e:
     print(f"Error initializing StacApi: {e}")
     raise
 
-# Add lifespan context
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

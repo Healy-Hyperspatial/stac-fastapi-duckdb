@@ -82,13 +82,6 @@ class DatabaseLogic:
                 detail=f"STAC_FILE_PATH directory not found at path: {self.stac_file_path}",
             )
 
-        # collections = [
-        #     self.collection_serializer.db_to_stac(
-        #         collection=hit["_source"], request=request, extensions=self.extensions
-        #     )
-        #     for hit in hits
-        # ]
-
         # Iterate through each subdirectory under STAC_FILE_PATH to find collection.json files
         for collection_name in os.listdir(self.stac_file_path):
             collection_dir = os.path.join(self.stac_file_path, collection_name)

@@ -1,6 +1,5 @@
 """DuckDB runtime configuration and data source mapping."""
 import json
-import logging
 import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -62,14 +61,6 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
         """Get the refresh setting for database operations."""
         return None
 
-    @property
-    def create_client(self):
-        """Create a synchronous DuckDB client."""
-        # Import here to avoid circular imports
-        from stac_fastapi.duckdb.database_logic import DuckDBClient
-
-        return DuckDBClient(settings=self)
-
     def get_collection_parquet_url(self, collection_id: str) -> str:
         """Get the Parquet URL for a collection."""
         if collection_id not in self._parquet_urls:
@@ -130,14 +121,3 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
                 conn.close()
             except Exception:
                 pass
-
-
-# Singleton instance for settings
-settings = DuckDBSettings()
-
-# Warn if direct response is enabled
-if settings.enable_direct_response:
-    logging.basicConfig(level=logging.WARNING)
-    logging.warning(
-        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
-    )
