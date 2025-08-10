@@ -61,14 +61,16 @@ def create_stac_item(df, item_id, collection_id):
     item = {
         "type": "Feature",
         "stac_version": "1.0.0",
-        "stac_extensions": convert_type(df.at[0, "stac_extensions"]),
+        "stac_extensions": convert_type(df.at[0, "stac_extensions"])
+        if "stac_extensions" in df.columns
+        else [],
         "id": item_id,
-        "bbox": df.at[0, "bbox"],
+        "bbox": convert_type(df.at[0, "bbox"]),
         "collection": collection_id,
         "properties": {},
         "geometry": geojson_geometry,
-        "assets": df.at[0, "assets"],
-        "links": [],
+        "assets": convert_type(df.at[0, "assets"]) if "assets" in df.columns else {},
+        "links": convert_type(df.at[0, "links"]) if "links" in df.columns else [],
     }
 
     # Dynamically populate properties with improved error handling

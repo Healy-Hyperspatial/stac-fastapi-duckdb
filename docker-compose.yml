@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   app-duckdb:
     container_name: stac-fastapi-duckdb
@@ -16,7 +14,8 @@ services:
       - WEB_CONCURRENCY=10
       - STAC_FILE_PATH=/app/stac_collections
       - BACKEND=duckdb
-      - PARQUET_FILE_PATH=/app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet
+      - PARQUET_URLS_JSON=${PARQUET_URLS_JSON}
+      - HTTP_CACHE_PATH=${HTTP_CACHE_PATH:-/tmp/duckdb_http_cache}
     ports:
       - "8085:8084"
     volumes:

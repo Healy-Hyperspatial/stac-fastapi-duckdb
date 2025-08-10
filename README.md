@@ -48,3 +48,30 @@ docker compose build
 ```shell
 docker compose up
 ```
+
+## Configuration
+
+This backend queries GeoParquet directly (local paths, HTTP, or S3) using per-request DuckDB connections. Configure which Parquet belongs to which STAC collection via environment variables.
+
+- __PARQUET_URLS_JSON__ (required): JSON mapping of `collection_id -> url_or_path`.
+  - Local example: `{"my_collection": "file:///data/my.parquet"}`
+  - S3 example (public bucket): `{"landsat": "s3://public-bucket/path/landsat.parquet"}`
+  - You may use globs: `{"cog": "s3://bucket/prefix/*.parquet"}`
+
+- __HTTP_CACHE_PATH__ (optional, default `/tmp/duckdb_http_cache`): Where DuckDB caches HTTP/S3 metadata (and object cache if available) to reduce network round trips.
+
+- __Threads__ (optional): set the `threads` field in code or expose as env to control DuckDB execution threads.
+
+Example (bash):
+
+```bash
+export PARQUET_URLS_JSON='{"demo": "file:///data/demo.parquet", "landsat": "s3://usgs-public/landsat/*.parquet"}'
+export HTTP_CACHE_PATH=/tmp/duckdb_http_cache
+```
+
+Notes:
+
+- For S3 without auth, ensure the bucket/objects are public.
+- For remote HTTP/S3, the service enables DuckDB httpfs and spatial extensions per request and uses metadata/object cache when available.
+- One GeoParquet corresponds to one STAC collection id.
+

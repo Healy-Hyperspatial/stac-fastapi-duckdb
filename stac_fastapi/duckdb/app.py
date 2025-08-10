@@ -1,70 +1,85 @@
 """FastAPI application."""
 
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.core.core import (  # BulkTransactionsClient,; TransactionsClient,
-    CoreClient,
-    EsAsyncBaseFiltersClient,
-)
+from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core import (  # TokenPaginationExtension,; TransactionExtension,
-    ContextExtension,
-    FieldsExtension,
-    FilterExtension,
-    SortExtension,
-)
+from stac_fastapi.extensions.core import FieldsExtension, FilterExtension, SortExtension
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
 from stac_fastapi.duckdb.config import DuckDBSettings
 from stac_fastapi.duckdb.database_logic import DatabaseLogic
 
-# from stac_fastapi.extensions.third_party import BulkTransactionExtension
-
-
 settings = DuckDBSettings()
 session = Session.create_from_settings(settings)
 
-filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
-filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
-)
-
 database_logic = DatabaseLogic()
 
+# Initialize extensions
+filter_extension = FilterExtension(
+    client=EsAsyncBaseFiltersClient(database=database_logic)
+)
+filter_extension.conformance_classes.append(
+    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
+)
+
 extensions = [
-    # TransactionExtension(
-    #     client=TransactionsClient(
-    #         database=database_logic, session=session, settings=settings
-    #     ),
-    #     settings=settings,
-    # ),
-    # BulkTransactionExtension(
-    #     client=BulkTransactionsClient(
-    #         database=database_logic,
-    #         session=session,
-    #         settings=settings,
-    #     )
-    # ),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
-    # TokenPaginationExtension(),
-    ContextExtension(),
     filter_extension,
 ]
 
+database_logic.extensions = [type(ext).__name__ for ext in extensions]
+
 post_request_model = create_post_request_model(extensions)
 
-api = StacApi(
-    settings=settings,
-    extensions=extensions,
-    client=CoreClient(
-        database=database_logic, session=session, post_request_model=post_request_model
+# Create app config dictionary
+app_config = {
+    "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-duckdb"),
+    "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-duckdb"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "0.0.1"),
+    "settings": settings,
+    "extensions": extensions,
+    "client": CoreClient(
+        database=database_logic,
+        session=session,
+        post_request_model=post_request_model,
+        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
-    search_get_request_model=create_get_request_model(extensions),
-    search_post_request_model=post_request_model,
-)
+    "search_get_request_model": create_get_request_model(extensions),
+    "search_post_request_model": post_request_model,
+    "route_dependencies": get_route_dependencies(),
+}
+
+# Initialize StacApi with config
+try:
+    api = StacApi(**app_config)
+except Exception as e:
+    print(f"Error initializing StacApi: {e}")
+    raise
+
+# Add lifespan context
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler for FastAPI app."""
+    # Add any initialization needed for DuckDB
+    yield
+
+
+# Create FastAPI app
 app = api.app
+app.router.lifespan_context = lifespan
+app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 
 def run() -> None:

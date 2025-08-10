@@ -2,20 +2,33 @@
 import json
 import logging
 import os
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
-import attr
-from fastapi import HTTPException
-
-# from stac_fastapi.core.extensions import filter
-# from stac_fastapi.core.utilities import bbox2polygon
+from fastapi import HTTPException, Request
 from stac_fastapi.core import serializers
 from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
 
 from stac_fastapi.duckdb.config import DuckDBSettings
-from stac_fastapi.duckdb.utilities import create_stac_item
+from stac_fastapi.duckdb.utilities import (
+    convert_type,
+    create_stac_item,
+    decode_geometry,
+)
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -27,22 +40,27 @@ class Geometry(Protocol):  # noqa
     coordinates: Any
 
 
-@attr.s(auto_attribs=True)
 class DatabaseLogic:
-    """Database logic managing DuckDB connections."""
+    """Database logic for querying GeoParquet using per-request DuckDB connections."""
 
-    settings = DuckDBSettings.get_instance()  # Access the singleton instance
-    conn = settings.conn
-    stac_file_path: str = os.getenv("STAC_FILE_PATH", "")
-    item_serializer: Type[serializers.ItemSerializer] = serializers.ItemSerializer
-    collection_serializer: Type[
-        serializers.CollectionSerializer
-    ] = serializers.CollectionSerializer
+    def __init__(self, settings: Optional[DuckDBSettings] = None) -> None:
+        """Initialize the database logic."""
+        self.settings: DuckDBSettings = settings or DuckDBSettings()
+        self.stac_file_path: str = os.getenv("STAC_FILE_PATH", "")
+        self.item_serializer: Type[
+            serializers.ItemSerializer
+        ] = serializers.ItemSerializer
+        self.collection_serializer: Type[
+            serializers.CollectionSerializer
+        ] = serializers.CollectionSerializer
+        self.extensions: List[str] = []
 
     """CORE LOGIC"""
 
+    # Connection creation and source resolution are provided by settings
+
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, request: Request
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         Retrieve a list of all collections from the MongoDB database, supporting pagination.
@@ -64,6 +82,13 @@ class DatabaseLogic:
                 detail=f"STAC_FILE_PATH directory not found at path: {self.stac_file_path}",
             )
 
+        # collections = [
+        #     self.collection_serializer.db_to_stac(
+        #         collection=hit["_source"], request=request, extensions=self.extensions
+        #     )
+        #     for hit in hits
+        # ]
+
         # Iterate through each subdirectory under STAC_FILE_PATH to find collection.json files
         for collection_name in os.listdir(self.stac_file_path):
             collection_dir = os.path.join(self.stac_file_path, collection_name)
@@ -75,7 +100,9 @@ class DatabaseLogic:
                             collection = json.load(json_file)
                             serialized_collection = (
                                 self.collection_serializer.db_to_stac(
-                                    collection, base_url
+                                    collection,
+                                    request=request,
+                                    extensions=self.extensions,
                                 )
                             )
                             collections.append(serialized_collection)
@@ -135,15 +162,22 @@ class DatabaseLogic:
             HTTPException: If the specified Item does not exist in the Collection.
         """
         try:
-            query = "SELECT * FROM items WHERE id = ? LIMIT 1"
-
-            df = self.conn.execute(query, [item_id]).df()
-            if df.empty:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Item {item_id} in collection {collection_id} does not exist.",
+            sources = self.settings.resolve_sources([collection_id])
+            _, url = sources[0]
+            with self.settings.create_connection() as conn:
+                # Project only needed columns to reduce IO
+                query = "SELECT * FROM read_parquet(?) WHERE id = ? LIMIT 1"
+                df = conn.execute(query, [url, item_id]).df()
+                if df.empty:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Item {item_id} in collection {collection_id} does not exist.",
+                    )
+                return create_stac_item(
+                    df=df, collection_id=collection_id, item_id=item_id
                 )
-            return create_stac_item(df=df, collection_id=collection_id, item_id=item_id)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -358,90 +392,120 @@ class DatabaseLogic:
         """
         if not collection_ids:
             raise HTTPException(status_code=400, detail="No collection IDs provided.")
-        
-        print("SORT: ", sort)
 
-        # Base query construction
-        base_query = "SELECT * FROM items"
-        count_query = (
-            "SELECT COUNT(*) FROM items"  # Query to count total items without limit
+        # Resolve sources for the collections
+        sources = self.settings.resolve_sources(collection_ids)
+
+        # Basic filters
+        item_ids: Optional[List[str]] = (
+            search.get("item_ids") if isinstance(search, dict) else None
         )
-        base_params = []  # Parameters for the base query
-        count_params = []  # Parameters specifically for the count query
-        conditions = []
 
-        # Handle collection_ids if provided
-        if collection_ids:
-            placeholder = ", ".join("?" * len(collection_ids))
-            conditions.append(f"collection IN ({placeholder})")
-            base_params.extend(collection_ids)
-            count_params.extend(collection_ids)  # Extend count_params similarly
+        # Build dynamic SQL using UNION ALL over sources
+        subqueries: List[str] = []
+        params: List[Any] = []
+        for cid, url in sources:
+            sq = "SELECT *, ? AS collection FROM read_parquet(?)"
+            params.extend([cid, url])
+            wheres: List[str] = []
+            if item_ids:
+                placeholders = ", ".join(["?"] * len(item_ids))
+                wheres.append(f"id IN ({placeholders})")
+                params.extend(item_ids)
+            if wheres:
+                sq += " WHERE " + " AND ".join(wheres)
+            subqueries.append(sq)
 
-        # # Add conditions from the search dictionary
-        # if search:
-        #     for key, value in search.items():
-        #         conditions.append(f"{key} = ?")
-        #         base_params.append(value)
-        #         count_params.append(value)  # Add similarly to count_params
+        union_sql = " UNION ALL ".join(subqueries)
+        base_sql = f"SELECT * FROM ({union_sql})"
 
-        # Combine all conditions into the WHERE clause
-        if conditions:
-            combined_conditions = " WHERE " + " AND ".join(conditions)
-            base_query += combined_conditions
-            count_query += combined_conditions
-
-        # Add sorting clause if provided to the base query
+        # Sorting
         if sort:
             sort_clause = ", ".join(
                 f"{field} {direction['order']}" for field, direction in sort.items()
             )
-            base_query += f" ORDER BY {sort_clause}"
+            base_sql += f" ORDER BY {sort_clause}"
 
-        # Add LIMIT to the base query
+        # Pagination: simple OFFSET token
+        offset_val = 0
+        if token:
+            try:
+                offset_val = int(token)
+            except ValueError:
+                offset_val = 0
         if limit:
-            base_query += " LIMIT ?"
-            base_params.append(str(limit))
+            base_sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset_val])
+
+        # Optional total count (can be expensive over remote). For now, omit and return None.
+        total: Optional[int] = None
 
         try:
-            # Execute count query
-            total_count = self.conn.execute(count_query, count_params).fetchone()[0]
+            with self.settings.create_connection() as conn:
+                df = conn.execute(base_sql, params).df()
+            next_token = None
+            if limit and df.shape[0] == limit:
+                next_token = str(offset_val + limit)
+            # Convert each row to a proper STAC item
+            items = []
+            for _, row in df.iterrows():
+                # Create a proper STAC item for each row
+                item = {
+                    "type": "Feature",
+                    "stac_version": "1.0.0",
+                    "stac_extensions": [],
+                    "id": row.get("id", ""),
+                    "bbox": convert_type(row.get("bbox")),
+                    "collection": row.get("collection", ""),
+                    "properties": {},
+                    "geometry": None,
+                    "assets": {},
+                    "links": [],
+                }
 
-            # Execute the base query
-            df = self.conn.execute(base_query, base_params).df()
-            if df.empty and not ignore_unavailable:
-                raise HTTPException(
-                    status_code=404, detail="No items found in specified collections."
-                )
+                # Handle geometry if present
+                if "geometry" in row and row["geometry"] is not None:
+                    try:
+                        geojson_geometry = decode_geometry(row["geometry"])
+                        item["geometry"] = geojson_geometry
+                    except Exception:
+                        item["geometry"] = None
 
-            results = [
-                create_stac_item(
-                    df=df, collection_id=collection_ids[0], item_id=row["id"]
-                )
-                for index, row in df.iterrows()
-            ]
-            return (
-                results,
-                total_count,
-                None,
-            )
+                # Handle assets if present
+                if "assets" in row:
+                    item["assets"] = convert_type(row["assets"]) or {}
+
+                # Handle links if present
+                if "links" in row:
+                    item["links"] = convert_type(row["links"]) or []
+
+                # Handle stac_extensions if present
+                if "stac_extensions" in row:
+                    item["stac_extensions"] = convert_type(row["stac_extensions"]) or []
+
+                # Populate properties with other columns
+                for column in df.columns:
+                    if column not in [
+                        "id",
+                        "geometry",
+                        "assets",
+                        "links",
+                        "type",
+                        "bbox",
+                        "stac_version",
+                        "stac_extensions",
+                        "collection",
+                    ]:
+                        converted_value = convert_type(row[column])
+                        item["properties"][column] = (
+                            converted_value if converted_value is not None else None
+                        )
+
+                items.append(item)
+
+            return items, total, next_token
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-
-        #     next_token = None
-        #     if len(items) > limit:
-        #         next_token = base64.urlsafe_b64encode(
-        #             str(items[-1]["_id"]).encode()
-        #         ).decode()
-        #         items = items[:-1]
-
-        #     maybe_count = None
-        #     if not token:
-        #         maybe_count = await collection.count_documents(query)
-
-        #     return items, maybe_count, next_token
-        # except PyMongoError as e:
-        #     print(f"Database operation failed: {e}")
-        #     raise
 
     """ TRANSACTION LOGIC """
 
