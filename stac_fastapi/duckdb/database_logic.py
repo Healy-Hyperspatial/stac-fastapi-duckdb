@@ -154,25 +154,57 @@ class DatabaseLogic:
         Raises:
             HTTPException: If the specified Item does not exist in the Collection.
         """
+        print(f"Get One Item: collection={collection_id}, item={item_id}")
         try:
+            # Get the parquet URL for the collection
             sources = self.settings.resolve_sources([collection_id])
-            _, url = sources[0]
-            with self.settings.create_connection() as conn:
-                # Project only needed columns to reduce IO
-                query = "SELECT * FROM read_parquet(?) WHERE id = ? LIMIT 1"
-                df = conn.execute(query, [url, item_id]).df()
-                if df.empty:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Item {item_id} in collection {collection_id} does not exist.",
-                    )
-                return create_stac_item(
-                    df=df, collection_id=collection_id, item_id=item_id
+            if not sources:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection {collection_id} not found in configuration.",
                 )
+            
+            _, url = sources[0]
+            print(f"Using parquet URL: {url}")
+            
+            with self.settings.create_connection() as conn:
+                # Use the same query pattern as in execute_search for consistency
+                query = """
+                    SELECT * FROM (
+                        SELECT *, ? AS collection 
+                        FROM read_parquet(?)
+                    ) 
+                    WHERE id = ? 
+                    LIMIT 1
+                """
+                
+                try:
+                    df = conn.execute(query, [collection_id, url, item_id]).df()
+                    if df.empty:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Item {item_id} in collection {collection_id} does not exist.",
+                        )
+                    
+                    # Create and return the STAC item
+                    item = create_stac_item(df=df, collection_id=collection_id, item_id=item_id)
+                    return item
+                    
+                except Exception as db_error:
+                    print(f"Database error in get_one_item: {str(db_error)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error querying item: {str(db_error)}"
+                    )
+                    
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            print(f"Unexpected error in get_one_item: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Internal server error: {str(e)}"
+            )
 
     @staticmethod
     def make_search():
@@ -439,62 +471,25 @@ class DatabaseLogic:
             next_token = None
             if limit and df.shape[0] == limit:
                 next_token = str(offset_val + limit)
-            # Convert each row to a proper STAC item
+            # Convert each row to a proper STAC item using create_stac_item
             items = []
             for _, row in df.iterrows():
-                # Create a proper STAC item for each row
-                item = {
-                    "type": "Feature",
-                    "stac_version": "1.0.0",
-                    "stac_extensions": [],
-                    "id": row.get("id", ""),
-                    "bbox": convert_type(row.get("bbox")),
-                    "collection": row.get("collection", ""),
-                    "properties": {},
-                    "geometry": None,
-                    "assets": {},
-                    "links": [],
-                }
-
-                # Handle geometry if present
-                if "geometry" in row and row["geometry"] is not None:
-                    try:
-                        geojson_geometry = decode_geometry(row["geometry"])
-                        item["geometry"] = geojson_geometry
-                    except Exception:
-                        item["geometry"] = None
-
-                # Handle assets if present
-                if "assets" in row:
-                    item["assets"] = convert_type(row["assets"]) or {}
-
-                # Handle links if present
-                if "links" in row:
-                    item["links"] = convert_type(row["links"]) or []
-
-                # Handle stac_extensions if present
-                if "stac_extensions" in row:
-                    item["stac_extensions"] = convert_type(row["stac_extensions"]) or []
-
-                # Populate properties with other columns
-                for column in df.columns:
-                    if column not in [
-                        "id",
-                        "geometry",
-                        "assets",
-                        "links",
-                        "type",
-                        "bbox",
-                        "stac_version",
-                        "stac_extensions",
-                        "collection",
-                    ]:
-                        converted_value = convert_type(row[column])
-                        item["properties"][column] = (
-                            converted_value if converted_value is not None else None
-                        )
-
-                items.append(item)
+                # Convert row to a single-row DataFrame for create_stac_item
+                row_df = row.to_frame().transpose()
+                item_id = row.get("id", "")
+                collection_id = row.get("collection", "")
+                
+                try:
+                    # Use create_stac_item to create the STAC item
+                    item = create_stac_item(
+                        df=row_df,
+                        item_id=item_id,
+                        collection_id=collection_id
+                    )
+                    items.append(item)
+                except Exception as e:
+                    # Log the error but continue with other items
+                    logger.warning(f"Failed to create STAC item for {item_id}: {str(e)}")
 
             return items, total, next_token
         except Exception as e:
