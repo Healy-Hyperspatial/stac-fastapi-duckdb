@@ -61,6 +61,13 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
         """Get the refresh setting for database operations."""
         return None
 
+    def create_client(self):
+        """Create a synchronous DuckDB client."""
+        # Import here to avoid circular imports
+        from stac_fastapi.duckdb.database_logic import DuckDBClient
+
+        return DuckDBClient(settings=self)
+
     def get_collection_parquet_url(self, collection_id: str) -> str:
         """Get the Parquet URL for a collection."""
         if collection_id not in self._parquet_urls:
