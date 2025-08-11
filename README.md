@@ -6,26 +6,74 @@
   <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
 </p>
 
+### DuckDB backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library.
 
-### DuckDB backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
+## Quick Start with Docker
 
-### Working so far:
-- GET /collections   
-- GET /collections/{collection_id}
-- GET /collections/{collection_id}/items
-- GET /collections/{collection_id}/items?limit=1
-- GET /collections/{collection_id}/items/{item_id}
+The easiest way to get started is using Docker and the provided Makefile:
 
-- Example: http://localhost:8085/collections
+1. **Clone the repository** (if you haven't already):
+   ```bash
+   git clone https://github.com/your-org/stac-fastapi-duckdb.git
+   cd stac-fastapi-duckdb
+   ```
 
-### To install from PyPI (not implemented yet):
+2. **Build and start the Docker container**:
+   ```bash
+   make up
+   ```
+   This will:
+   - Build the Docker image
+   - Start the STAC API server on http://localhost:8085
+   - Mount the `stac_collections` directory into the container
 
-```shell
-pip install stac_fastapi.duckdb
-```
+3. **Access the API**:
+   - Browse collections: http://localhost:8085/collections
+   - View collection items: http://localhost:8085/collections/io-lulc-9-class/items
+   - Get a specific item: http://localhost:8085/collections/io-lulc-9-class/items/{item_id}
 
-### For changes, see the [Changelog](CHANGELOG.md)
+4. **Other useful commands**:
+   ```bash
+   # Run in detached mode (background)
+   make up-d
+   
+   # View logs
+   make logs
+   
+   # Stop the container
+   make down
+   ```
 
+## API Endpoints
+
+The following STAC API endpoints are implemented:
+- `GET /collections` - List all collections
+- `GET /collections/{collection_id}` - Get a specific collection
+- `GET /collections/{collection_id}/items` - Get items in a collection
+- `GET /collections/{collection_id}/items/{item_id}` - Get a specific item
+
+## Configuration
+
+### Environment Variables
+
+- `PARQUET_URLS_JSON` (required): JSON object mapping collection IDs to Parquet file paths/URLs
+  - Local file example: `{"io-lulc-9-class": "file:///app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet"}`
+  - S3 example: `{"landsat": "s3://public-bucket/path/landsat.parquet"}`
+  - When running with Docker, use container paths (e.g., `/app/stac_collections/...`)
+
+- `HTTP_CACHE_PATH` (optional, default: `/tmp/duckdb_http_cache`): 
+  Directory where DuckDB caches HTTP/S3 metadata to reduce network round trips
+
+- `STAC_FILE_PATH` (optional, default: `/app/stac_collections`):
+  Directory containing STAC collection JSON files
+
+- `ENABLE_DIRECT_RESPONSE` (optional, default: `false`):
+  Enable direct response handling
+
+- `RAISE_ON_BULK_ERROR` (optional, default: `false`):
+  Whether to raise exceptions on bulk operation errors
+
+## Development
 
 ### Pre-commit
 
@@ -48,30 +96,4 @@ docker compose build
 ```shell
 docker compose up
 ```
-
-## Configuration
-
-This backend queries GeoParquet directly (local paths, HTTP, or S3) using per-request DuckDB connections. Configure which Parquet belongs to which STAC collection via environment variables.
-
-- __PARQUET_URLS_JSON__ (required): JSON mapping of `collection_id -> url_or_path`.
-  - Local example: `{"my_collection": "file:///data/my.parquet"}`
-  - S3 example (public bucket): `{"landsat": "s3://public-bucket/path/landsat.parquet"}`
-  - You may use globs: `{"cog": "s3://bucket/prefix/*.parquet"}`
-
-- __HTTP_CACHE_PATH__ (optional, default `/tmp/duckdb_http_cache`): Where DuckDB caches HTTP/S3 metadata (and object cache if available) to reduce network round trips.
-
-- __Threads__ (optional): set the `threads` field in code or expose as env to control DuckDB execution threads.
-
-Example (bash):
-
-```bash
-export PARQUET_URLS_JSON='{"demo": "file:///data/demo.parquet", "landsat": "s3://usgs-public/landsat/*.parquet"}'
-export HTTP_CACHE_PATH=/tmp/duckdb_http_cache
-```
-
-Notes:
-
-- For S3 without auth, ensure the bucket/objects are public.
-- For remote HTTP/S3, the service enables DuckDB httpfs and spatial extensions per request and uses metadata/object cache when available.
-- One GeoParquet corresponds to one STAC collection id.
 
