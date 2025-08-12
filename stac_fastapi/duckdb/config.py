@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import duckdb
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.utilities import get_bool_env
+
+# from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -21,7 +22,7 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
         "end_datetime",
         "geometry",
     }
-    enable_response_models: bool = False
+    # enable_response_models: bool = False
 
     # DuckDB-specific settings
     http_cache_path: str = os.getenv("HTTP_CACHE_PATH", "/tmp/duckdb_http_cache")

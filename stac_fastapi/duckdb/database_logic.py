@@ -22,11 +22,7 @@ from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
 
 from stac_fastapi.duckdb.config import DuckDBSettings
-from stac_fastapi.duckdb.utilities import (
-    convert_type,
-    create_stac_item,
-    decode_geometry,
-)
+from stac_fastapi.duckdb.utilities import create_stac_item
 
 T = TypeVar("T")
 
@@ -158,26 +154,26 @@ class DatabaseLogic:
         try:
             # Get the parquet URL for the collection
             sources = self.settings.resolve_sources([collection_id])
-            if not sources:
+            if collection_id not in [src[0] for src in sources]:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Collection {collection_id} not found in configuration.",
                 )
-            
+
             _, url = sources[0]
             print(f"Using parquet URL: {url}")
-            
+
             with self.settings.create_connection() as conn:
                 # Use the same query pattern as in execute_search for consistency
                 query = """
                     SELECT * FROM (
-                        SELECT *, ? AS collection 
+                        SELECT *, ? AS collection
                         FROM read_parquet(?)
-                    ) 
-                    WHERE id = ? 
+                    )
+                    WHERE id = ?
                     LIMIT 1
                 """
-                
+
                 try:
                     df = conn.execute(query, [collection_id, url, item_id]).df()
                     if df.empty:
@@ -185,25 +181,25 @@ class DatabaseLogic:
                             status_code=404,
                             detail=f"Item {item_id} in collection {collection_id} does not exist.",
                         )
-                    
+
                     # Create and return the STAC item
-                    item = create_stac_item(df=df, collection_id=collection_id, item_id=item_id)
+                    item = create_stac_item(
+                        df=df, collection_id=collection_id, item_id=item_id
+                    )
                     return item
-                    
+
                 except Exception as db_error:
                     print(f"Database error in get_one_item: {str(db_error)}")
                     raise HTTPException(
-                        status_code=500,
-                        detail=f"Error querying item: {str(db_error)}"
+                        status_code=500, detail=f"Error querying item: {str(db_error)}"
                     )
-                    
+
         except HTTPException:
             raise
         except Exception as e:
             print(f"Unexpected error in get_one_item: {str(e)}")
             raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error: {str(e)}"
+                status_code=500, detail=f"Internal server error: {str(e)}"
             )
 
     @staticmethod
@@ -415,6 +411,12 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
+        print("limit", limit)
+        print("token", token)
+        print("sort", sort)
+        print("collection_ids", collection_ids)
+        print("ignore_unavailable", ignore_unavailable)
+
         if not collection_ids:
             raise HTTPException(status_code=400, detail="No collection IDs provided.")
 
@@ -473,23 +475,48 @@ class DatabaseLogic:
                 next_token = str(offset_val + limit)
             # Convert each row to a proper STAC item using create_stac_item
             items = []
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
                 # Convert row to a single-row DataFrame for create_stac_item
                 row_df = row.to_frame().transpose()
                 item_id = row.get("id", "")
                 collection_id = row.get("collection", "")
-                
+
                 try:
+                    # Log the row data for debugging
+                    logger.debug(
+                        f"Creating STAC item for {item_id} in collection {collection_id}"
+                    )
+
                     # Use create_stac_item to create the STAC item
                     item = create_stac_item(
-                        df=row_df,
-                        item_id=item_id,
-                        collection_id=collection_id
+                        df=row_df, item_id=item_id, collection_id=collection_id
                     )
+
+                    # Verify the item was created successfully
+                    if not item or not isinstance(item, dict):
+                        logger.error(
+                            f"create_stac_item returned invalid result for {item_id}: {item}"
+                        )
+                        continue
+
                     items.append(item)
+                    logger.debug(f"Successfully created STAC item for {item_id}")
+
                 except Exception as e:
-                    # Log the error but continue with other items
-                    logger.warning(f"Failed to create STAC item for {item_id}: {str(e)}")
+                    # Log detailed error information
+                    logger.error(
+                        f"Failed to create STAC item for {item_id} (row {idx}): {str(e)}"
+                    )
+                    logger.debug(f"Row data: {row.to_dict()}")
+
+                    # If it's a specific error code 0, log additional context
+                    if str(e) == "0":
+                        logger.error(
+                            f"Item creation failed with error code 0 for {item_id}"
+                        )
+                        logger.error(
+                            "This might indicate a problem with the item data or the create_stac_item function"
+                        )
 
             return items, total, next_token
         except Exception as e:
