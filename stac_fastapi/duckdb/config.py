@@ -22,8 +22,6 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
         "geometry",
     }
     enable_response_models: bool = False
-    enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
-    raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     # DuckDB-specific settings
     http_cache_path: str = os.getenv("HTTP_CACHE_PATH", "/tmp/duckdb_http_cache")

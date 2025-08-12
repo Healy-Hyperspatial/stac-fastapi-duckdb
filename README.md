@@ -67,12 +67,6 @@ The following STAC API endpoints are implemented:
 - `STAC_FILE_PATH` (optional, default: `/app/stac_collections`):
   Directory containing STAC collection JSON files
 
-- `ENABLE_DIRECT_RESPONSE` (optional, default: `false`):
-  Enable direct response handling
-
-- `RAISE_ON_BULK_ERROR` (optional, default: `false`):
-  Whether to raise exceptions on bulk operation errors
-
 ## Development
 
 ### Pre-commit
