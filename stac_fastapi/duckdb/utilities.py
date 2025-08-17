@@ -249,8 +249,16 @@ def create_stac_item(df, item_id, collection_id):
             ]:
                 try:
                     value = row.get(column)
-                    if pd.notna(value) and value is not None:
-                        item["properties"][column] = convert_type(value)
+                    # Handle arrays and scalars safely to avoid ambiguous truth value warnings
+                    if value is not None:
+                        # For arrays, check if they have any elements; for scalars, check if not NaN
+                        if hasattr(value, '__len__') and hasattr(value, 'size'):
+                            # NumPy array or similar - check if it has elements
+                            if value.size > 0:
+                                item["properties"][column] = convert_type(value)
+                        elif pd.notna(value):
+                            # Scalar value - use pd.notna
+                            item["properties"][column] = convert_type(value)
                 except Exception as e:
                     print(f"Warning: Could not process property '{column}': {str(e)}")
                     continue
