@@ -221,29 +221,124 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_datetime_filter(search: dict, datetime_search):
-        """Apply a filter to search based on datetime field.
+    def apply_datetime_filter(search: dict, interval: Optional[str]) -> dict:
+        """Apply a filter to search based on datetime, start_datetime, and end_datetime fields.
+
+        This emulates the stac-fastapi-elasticsearch datetime filter logic for DuckDB:
+        - For exact matches: include items with matching datetime OR items with null datetime 
+          where the time falls within their start_datetime/end_datetime range
+        - For date ranges: include items with datetime in range OR items with null datetime 
+          that overlap the search range
 
         Args:
-            search (Search): The search object to filter.
-            datetime_search (dict): The datetime filter criteria.
+            search (dict): The search dictionary containing query parameters.
+            interval (Optional[str]): The datetime interval to filter by. Can be:
+                - A single datetime string (e.g., "2023-01-01T12:00:00")
+                - A datetime range string (e.g., "2023-01-01/2023-12-31")
+                - None to skip filtering
 
         Returns:
-            Search: The filtered search object.
+            dict: The updated search dictionary with datetime filters applied.
         """
-        pass
-        # if "eq" in datetime_search:
-        #     search.add_filter({"properties.datetime": datetime_search["eq"]})
-        # else:
-        #     if "gte" in datetime_search:
-        #         search.add_filter(
-        #             {"properties.datetime": {"$gte": datetime_search["gte"]}}
-        #         )
-        #     if "lte" in datetime_search:
-        #         search.add_filter(
-        #             {"properties.datetime": {"$lte": datetime_search["lte"]}}
-        #         )
+        if not interval:
+            return search
+
+        # Parse the interval string into datetime_search format
+        datetime_search = DatabaseLogic._parse_datetime_interval(interval)
+        if not datetime_search:
+            return search
+
+        # Initialize the filters list if it doesn't exist
+        if 'filters' not in search:
+            search['filters'] = []
+
+        # Build SQL conditions based on datetime filter type
+        if 'eq' in datetime_search:
+            # Exact match case: emulate ES "should" logic with OR conditions
+            exact_datetime = datetime_search['eq']
+            datetime_condition = f"""(
+                (datetime IS NOT NULL AND datetime = '{exact_datetime}')
+                OR 
+                (datetime IS NULL 
+                 AND start_datetime IS NOT NULL 
+                 AND end_datetime IS NOT NULL
+                 AND start_datetime <= '{exact_datetime}' 
+                 AND end_datetime >= '{exact_datetime}')
+            )"""
+            search['filters'].append(datetime_condition)
+        else:
+            # Range case: handle gte/lte combinations
+            gte_value = datetime_search.get('gte')
+            lte_value = datetime_search.get('lte')
+            
+            if gte_value and lte_value:
+                # Both start and end of range specified
+                range_condition = f"""(
+                    (datetime IS NOT NULL 
+                     AND datetime >= '{gte_value}' 
+                     AND datetime <= '{lte_value}')
+                    OR 
+                    (datetime IS NULL 
+                     AND start_datetime IS NOT NULL 
+                     AND end_datetime IS NOT NULL
+                     AND start_datetime <= '{lte_value}' 
+                     AND end_datetime >= '{gte_value}')
+                )"""
+                search['filters'].append(range_condition)
+            elif gte_value:
+                # Only start of range specified
+                gte_condition = f"""(
+                    (datetime IS NOT NULL AND datetime >= '{gte_value}')
+                    OR 
+                    (datetime IS NULL 
+                     AND end_datetime IS NOT NULL
+                     AND end_datetime >= '{gte_value}')
+                )"""
+                search['filters'].append(gte_condition)
+            elif lte_value:
+                # Only end of range specified
+                lte_condition = f"""(
+                    (datetime IS NOT NULL AND datetime <= '{lte_value}')
+                    OR 
+                    (datetime IS NULL 
+                     AND start_datetime IS NOT NULL
+                     AND start_datetime <= '{lte_value}')
+                )"""
+                search['filters'].append(lte_condition)
+
         return search
+
+    @staticmethod
+    def _parse_datetime_interval(interval: str) -> dict:
+        """Parse a datetime interval string into a search dictionary.
+        
+        Args:
+            interval (str): The datetime interval. Can be:
+                - A single datetime string (e.g., "2023-01-01T12:00:00")
+                - A datetime range string (e.g., "2023-01-01/2023-12-31")
+                - An open-ended range (e.g., "2023-01-01/.." or "../2023-12-31")
+        
+        Returns:
+            dict: A dictionary with 'eq', 'gte', and/or 'lte' keys for filtering.
+        """
+        if not interval:
+            return {}
+        
+        # Handle range intervals with "/" separator
+        if "/" in interval:
+            parts = interval.split("/", 1)
+            start_date = parts[0].strip() if parts[0].strip() != ".." else None
+            end_date = parts[1].strip() if parts[1].strip() != ".." else None
+            
+            datetime_search = {}
+            if start_date:
+                datetime_search["gte"] = start_date
+            if end_date:
+                datetime_search["lte"] = end_date
+            return datetime_search
+        else:
+            # Single datetime - treat as exact match
+            return {"eq": interval.strip()}
 
     @staticmethod
     def apply_bbox_filter(search: dict, bbox: List):
@@ -334,25 +429,169 @@ class DatabaseLogic:
         # search.add_filter(filter_condition)
         # return search
 
-    @staticmethod
-    def apply_cql2_filter(search_adapter: dict, _filter: Optional[Dict[str, Any]]):
+    async def apply_cql2_filter(
+        self, search: dict, _filter: Optional[Dict[str, Any]]
+    ) -> dict:
         """
-        Apply a CQL2 JSON filter to the MongoDB search adapter.
+        Apply a CQL2 filter to a DuckDB search dictionary.
 
-        This method translates a CQL2 JSON filter into MongoDB's query syntax and adds it to the adapter's filters.
+        This method transforms a dictionary representing a CQL2 filter into DuckDB SQL
+        conditions and applies it to the provided search dictionary.
 
         Args:
-            search_adapter (DuckDBSearchAdapter): The MongoDB search adapter to which the filter will be applied.
-            _filter (Optional[Dict[str, Any]]): The CQL2 filter as a dictionary. If None, no action is taken.
+            search (dict): The search dictionary to which the filter will be applied.
+            _filter (Optional[Dict[str, Any]]): The CQL2 filter in dictionary form.
+                                                If None, the original search is returned.
 
         Returns:
-            DuckDBSearchAdapter: The search adapter with the CQL2 filter applied.
+            dict: The modified search dictionary with the filter applied.
         """
-        pass
-        # if _filter is not None:
-        #     mongo_query = DatabaseLogic.translate_cql2_to_mongo(_filter)
-        #     search_adapter.add_filter(mongo_query)
-        # return search_adapter
+        if _filter is None:
+            return search
+
+        try:
+            # Convert CQL2 filter to SQL WHERE condition
+            sql_condition = self._cql2_to_sql(_filter)
+            if sql_condition:
+                # Initialize filters if not present
+                if 'filters' not in search:
+                    search['filters'] = []
+                search['filters'].append(sql_condition)
+        except Exception as e:
+            logger.warning(f"Failed to apply CQL2 filter: {str(e)}")
+            # Return search unchanged if filter conversion fails
+            
+        return search
+
+    def _cql2_to_sql(self, cql2_filter: Dict[str, Any]) -> Optional[str]:
+        """
+        Convert a CQL2 filter to SQL WHERE condition.
+        
+        Args:
+            cql2_filter: CQL2 filter dictionary
+            
+        Returns:
+            SQL WHERE condition string or None if conversion fails
+        """
+        try:
+            return self._convert_cql2_expression(cql2_filter)
+        except Exception as e:
+            logger.warning(f"CQL2 to SQL conversion failed: {str(e)}")
+            return None
+
+    def _convert_cql2_expression(self, expr: Dict[str, Any]) -> str:
+        """
+        Recursively convert CQL2 expressions to SQL.
+        
+        Args:
+            expr: CQL2 expression dictionary
+            
+        Returns:
+            SQL condition string
+        """
+        if not isinstance(expr, dict):
+            return str(expr)
+
+        # Handle logical operators
+        if "and" in expr:
+            conditions = [self._convert_cql2_expression(sub) for sub in expr["and"]]
+            return f"({' AND '.join(conditions)})"
+        
+        if "or" in expr:
+            conditions = [self._convert_cql2_expression(sub) for sub in expr["or"]]
+            return f"({' OR '.join(conditions)})"
+        
+        if "not" in expr:
+            condition = self._convert_cql2_expression(expr["not"])
+            return f"NOT ({condition})"
+
+        # Handle comparison operators
+        if "=" in expr:
+            args = expr["="]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} = {right}"
+        
+        if "<>" in expr:
+            args = expr["<>"]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} <> {right}"
+        
+        if "<" in expr:
+            args = expr["<"]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} < {right}"
+        
+        if "<=" in expr:
+            args = expr["<="]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} <= {right}"
+        
+        if ">" in expr:
+            args = expr[">"]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} > {right}"
+        
+        if ">=" in expr:
+            args = expr[">="]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} >= {right}"
+
+        # Handle LIKE operator
+        if "like" in expr:
+            args = expr["like"]
+            left, right = self._format_operands(args[0], args[1])
+            return f"{left} LIKE {right}"
+
+        # Handle IN operator
+        if "in" in expr:
+            args = expr["in"]
+            left = self._format_field_name(args[0])
+            values = [self._format_value(v) for v in args[1]]
+            return f"{left} IN ({', '.join(values)})"
+
+        # Handle BETWEEN operator
+        if "between" in expr:
+            args = expr["between"]
+            field = self._format_field_name(args[0])
+            lower = self._format_value(args[1])
+            upper = self._format_value(args[2])
+            return f"{field} BETWEEN {lower} AND {upper}"
+
+        # Handle IS NULL
+        if "isNull" in expr:
+            field = self._format_field_name(expr["isNull"])
+            return f"{field} IS NULL"
+
+        # If we can't handle the expression, return a safe default
+        logger.warning(f"Unsupported CQL2 expression: {expr}")
+        return "1=1"  # Always true condition
+
+    def _format_operands(self, left: Any, right: Any) -> tuple:
+        """Format left and right operands for SQL comparison."""
+        left_formatted = self._format_field_name(left) if isinstance(left, dict) and "property" in left else self._format_value(left)
+        right_formatted = self._format_field_name(right) if isinstance(right, dict) and "property" in right else self._format_value(right)
+        return left_formatted, right_formatted
+
+    def _format_field_name(self, field: Any) -> str:
+        """Format a field name for SQL."""
+        if isinstance(field, dict) and "property" in field:
+            return field["property"]
+        return str(field)
+
+    def _format_value(self, value: Any) -> str:
+        """Format a value for SQL."""
+        if isinstance(value, str):
+            # Escape single quotes and wrap in quotes
+            escaped = value.replace("'", "''")
+            return f"'{escaped}'"
+        elif isinstance(value, (int, float)):
+            return str(value)
+        elif isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        elif value is None:
+            return "NULL"
+        else:
+            return f"'{str(value)}'"
 
     @staticmethod
     def populate_sort(sortby: List[SortExtension]) -> List[Tuple[str, int]]:
@@ -417,8 +656,14 @@ class DatabaseLogic:
         print("collection_ids", collection_ids)
         print("ignore_unavailable", ignore_unavailable)
 
+        # If no collection IDs provided, search all available collections
         if not collection_ids:
-            raise HTTPException(status_code=400, detail="No collection IDs provided.")
+            # Get all available collection IDs from the settings
+            all_collection_ids = list(self.settings.parquet_urls.keys())
+            if not all_collection_ids:
+                raise HTTPException(status_code=404, detail="No collections available for search.")
+            collection_ids = all_collection_ids
+            print(f"No collections specified, searching all available: {collection_ids}")
 
         # Resolve sources for the collections
         sources = self.settings.resolve_sources(collection_ids)
@@ -435,10 +680,17 @@ class DatabaseLogic:
             sq = "SELECT *, ? AS collection FROM read_parquet(?)"
             params.extend([cid, url])
             wheres: List[str] = []
+            
+            # Add item_ids filter if specified
             if item_ids:
                 placeholders = ", ".join(["?"] * len(item_ids))
                 wheres.append(f"id IN ({placeholders})")
                 params.extend(item_ids)
+            
+            # Add datetime filters if specified
+            if 'filters' in search and search['filters']:
+                wheres.extend(search['filters'])
+            
             if wheres:
                 sq += " WHERE " + " AND ".join(wheres)
             subqueries.append(sq)
@@ -453,29 +705,45 @@ class DatabaseLogic:
             )
             base_sql += f" ORDER BY {sort_clause}"
 
-        # Pagination: simple OFFSET token
+        # Pagination: mimic ES search_after pattern with offset-based approach
         offset_val = 0
         if token:
             try:
+                # For now, use simple integer offset (can be enhanced to base64 later)
                 offset_val = int(token)
-            except ValueError:
+            except (ValueError, TypeError):
                 offset_val = 0
-        if limit:
+
+        # Request one more item than limit to check if there are more results
+        size_limit = limit + 1 if limit else None
+        if size_limit:
             base_sql += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset_val])
+            params.extend([size_limit, offset_val])
 
-        # Optional total count (can be expensive over remote). For now, omit and return None.
-        total: Optional[int] = None
-
+        # Execute the main search query
         try:
             with self.settings.create_connection() as conn:
                 df = conn.execute(base_sql, params).df()
-            next_token = None
-            if limit and df.shape[0] == limit:
-                next_token = str(offset_val + limit)
-            # Convert each row to a proper STAC item using create_stac_item
-            items = []
-            for idx, row in df.iterrows():
+        except Exception as e:
+            if "not found" in str(e).lower():
+                from stac_fastapi.types.errors import NotFoundError
+                raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+        # Determine if there are more results and create next token
+        has_more = len(df) > limit if limit else False
+        actual_results = df.head(limit) if limit and has_more else df
+        
+        next_token = None
+        if has_more and limit:
+            next_token = str(offset_val + limit)
+
+        # Optional total count (expensive for large datasets, so we omit for now)
+        total: Optional[int] = None
+
+        # Convert each row to a proper STAC item using create_stac_item
+        items = []
+        for idx, row in actual_results.iterrows():
                 # Convert row to a single-row DataFrame for create_stac_item
                 row_df = row.to_frame().transpose()
                 item_id = row.get("id", "")
@@ -518,10 +786,8 @@ class DatabaseLogic:
                             "This might indicate a problem with the item data or the create_stac_item function"
                         )
 
-            return items, total, next_token
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
+        return items, total, next_token
+        
     """ TRANSACTION LOGIC """
 
     async def check_collection_exists(self, collection_id: str):

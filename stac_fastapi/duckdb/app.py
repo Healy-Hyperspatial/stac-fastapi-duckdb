@@ -3,7 +3,10 @@
 import os
 from contextlib import asynccontextmanager
 
+from typing import Optional
+
 from fastapi import FastAPI
+from pydantic import Field
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.core.core import CoreClient
@@ -12,10 +15,10 @@ from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import FieldsExtension, FilterExtension, SortExtension
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
 from stac_fastapi.duckdb.config import DuckDBSettings
 from stac_fastapi.duckdb.database_logic import DatabaseLogic
+from stac_fastapi.duckdb.filter_client import DuckDBFilterClient
 
 settings = DuckDBSettings()
 session = Session.create_from_settings(settings)
@@ -24,7 +27,7 @@ database_logic = DatabaseLogic()
 
 # Initialize extensions
 filter_extension = FilterExtension(
-    client=EsAsyncBaseFiltersClient(database=database_logic)
+    client=DuckDBFilterClient(database=database_logic)
 )
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
@@ -39,7 +42,15 @@ extensions = [
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
-post_request_model = create_post_request_model(extensions)
+# Create the base post request model
+BasePostRequestModel = create_post_request_model(extensions)
+
+# Create a custom post request model that includes the token field
+class DuckDBPostRequestModel(BasePostRequestModel):
+    """Custom POST request model with token field for pagination."""
+    token: Optional[str] = Field(None, description="Pagination token")
+
+post_request_model = DuckDBPostRequestModel
 
 # Create app config dictionary
 app_config = {
