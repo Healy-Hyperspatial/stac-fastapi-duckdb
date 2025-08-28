@@ -26,6 +26,15 @@ down: ## Stop containers
 logs: ## Tail logs
 	docker compose logs -f
 
+test: ## Run tests in docker
+	docker compose exec app pytest tests/ -v
+
+test-build: ## Build and run tests in docker
+	docker compose build
+	docker compose up -d
+	docker compose exec app pytest tests/ -v
+	docker compose down
+
 restart: down up-d ## Restart detached
 
 demo-url: ## Print demo PARQUET_URLS_JSON
