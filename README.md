@@ -49,8 +49,37 @@ The easiest way to get started is using Docker and the provided Makefile:
 The following STAC API endpoints are implemented:
 - `GET /collections` - List all collections
 - `GET /collections/{collection_id}` - Get a specific collection
-- `GET /collections/{collection_id}/items` - Get items in a collection
+- `GET /collections/{collection_id}/items` - Get items in a collection with filtering support
 - `GET /collections/{collection_id}/items/{item_id}` - Get a specific item
+- `POST /search` - Search across collections with advanced filtering
+
+### Supported Query Parameters
+
+#### Datetime Filtering
+- `datetime` - Filter items by temporal extent using RFC3339 datetime strings:
+  - Single datetime: `datetime=2022-01-01T00:00:00Z`
+  - Date range: `datetime=2022-01-01T00:00:00Z/2023-01-01T00:00:00Z`
+  - Open-ended ranges: `datetime=2022-01-01T00:00:00Z/..` or `datetime=../2023-01-01T00:00:00Z`
+
+#### Other Parameters
+- `limit` - Maximum number of items to return (default: 10)
+- `bbox` - Spatial bounding box filter: `bbox=west,south,east,north`
+- `ids` - Filter by specific item IDs: `ids=item1,item2,item3`
+
+### Example Queries
+
+```bash
+# Get items from a specific time range
+curl "http://localhost:8085/collections/io-lulc-9-class/items?datetime=2019-01-01T00:00:00Z/2023-01-01T00:00:00Z&limit=5"
+
+# Get items with spatial and temporal filters
+curl "http://localhost:8085/collections/io-lulc-9-class/items?bbox=-66,-16,-60,-8&datetime=2020-01-01T00:00:00Z/2022-01-01T00:00:00Z"
+
+# Search across all collections
+curl -X POST "http://localhost:8085/search" \
+  -H "Content-Type: application/json" \
+  -d '{"datetime": "2019-01-01T00:00:00Z/2023-01-01T00:00:00Z", "limit": 10}'
+```
 
 ## Configuration
 
