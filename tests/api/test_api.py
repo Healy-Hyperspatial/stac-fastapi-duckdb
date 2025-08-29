@@ -25,8 +25,8 @@ async def test_get_collection_items(app_client):
     assert data["type"] == "FeatureCollection"
     assert "features" in data
     assert len(data["features"]) > 0
-    assert "numberMatched" in data
-    assert "numberReturned" in data
+    assert "numMatched" in data
+    assert "numReturned" in data
     
     # Check first item structure
     item = data["features"][0]
@@ -49,6 +49,8 @@ async def test_bbox_filtering(app_client):
     
     assert data["type"] == "FeatureCollection"
     assert "features" in data
+    assert "numMatched" in data
+    assert "numReturned" in data
     # Should have some results within this bbox
     assert len(data["features"]) >= 0
 

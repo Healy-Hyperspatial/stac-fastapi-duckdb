@@ -101,7 +101,8 @@ async def test_item(database):
         collection_ids=["io-lulc-9-class"],
         search={},
         limit=1,
-        token=None
+        token=None,
+        sort={"field": "id", "direction": "asc"}
     )
     if items:
         return items[0]

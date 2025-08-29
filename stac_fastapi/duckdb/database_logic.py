@@ -341,30 +341,55 @@ class DatabaseLogic:
             return {"eq": interval.strip()}
 
     @staticmethod
-    def apply_bbox_filter(search: dict, bbox: List):
+    def apply_bbox_filter(search: dict, bbox):
         """Filter search results based on bounding box.
 
         Args:
             search (dict): The search object to apply the filter to.
-            bbox (List): The bounding box coordinates [west, south, east, north].
+            bbox (Union[List, str]): The bounding box coordinates [west, south, east, north]
+                                     or a comma-separated string "west,south,east,north".
 
         Returns:
             dict: The search object with the bounding box filter applied.
         """
-        if not bbox or len(bbox) != 4:
+        if not bbox:
             return search
             
-        west, south, east, north = bbox
-        
-        # Create spatial filter using DuckDB's ST_Intersects with a bounding box polygon
-        bbox_wkt = f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
-        spatial_filter = f"ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}'))"
-        
-        # Add to filters list
-        if 'filters' not in search:
-            search['filters'] = []
-        search['filters'].append(spatial_filter)
-        
+        # Ensure bbox is a list of floats
+        # The bbox should already be converted to a list of floats by the core client
+        # But we'll handle string input just in case
+        if isinstance(bbox, str):
+            try:
+                bbox = [float(coord.strip()) for coord in bbox.split(',')]
+            except (ValueError, AttributeError):
+                logger.warning(f"Invalid bbox format: {bbox}")
+                return search
+                
+        # Validate bbox format
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            logger.warning(f"Expected bbox with 4 coordinates, got {bbox}")
+            return search
+            
+        try:
+            west, south, east, north = map(float, bbox)
+            
+            # Validate coordinates
+            if not all(isinstance(coord, (int, float)) for coord in [west, south, east, north]):
+                logger.warning(f"Invalid bbox coordinates: {bbox}")
+                return search
+                
+            # Create spatial filter using DuckDB's ST_Intersects with a bounding box polygon
+            bbox_wkt = f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
+            spatial_filter = f"ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}'))"
+            
+            # Add to filters list
+            if 'filters' not in search:
+                search['filters'] = []
+            search['filters'].append(spatial_filter)
+            
+        except Exception as e:
+            logger.error(f"Error applying bbox filter: {str(e)}")
+            
         return search
 
     @staticmethod
@@ -773,9 +798,17 @@ class DatabaseLogic:
 
         # Sorting
         if sort:
-            sort_clause = ", ".join(
-                f"{field} {direction['order']}" for field, direction in sort.items()
-            )
+            # Handle different sort formats
+            if 'field' in sort and 'direction' in sort:
+                # Format: {"field": "id", "direction": "asc"}
+                field = sort['field']
+                direction = sort['direction']
+                sort_clause = f"{field} {direction}"
+            else:
+                # Format: {"field1": {"order": "asc"}, "field2": {"order": "desc"}}
+                sort_clause = ", ".join(
+                    f"{field} {direction['order']}" for field, direction in sort.items()
+                )
             base_sql += f" ORDER BY {sort_clause}"
 
         # Pagination: mimic ES search_after pattern with offset-based approach

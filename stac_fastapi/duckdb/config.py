@@ -102,7 +102,7 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
 
     @contextmanager
     def create_connection(self):
-        """Create a per-request DuckDB connection with httpfs and basic caching configured."""
+        """Create a per-request DuckDB connection with httpfs and spatial extensions configured."""
         conn = duckdb.connect(database=":memory:")
         try:
             # Enable remote I/O via httpfs where available
@@ -114,6 +114,17 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
                 conn.execute("LOAD httpfs;")
             except Exception:
                 pass
+                
+            # Install and load spatial extension for geometry functions
+            try:
+                conn.execute("INSTALL spatial;")
+            except Exception:
+                pass
+            try:
+                conn.execute("LOAD spatial;")
+            except Exception:
+                pass
+                
             # Best-effort caching knobs
             try:
                 conn.execute("SET enable_http_metadata_cache=true")

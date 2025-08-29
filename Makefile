@@ -26,14 +26,20 @@ down: ## Stop containers
 logs: ## Tail logs
 	docker compose logs -f
 
+DOCKER_ENV = STAC_FILE_PATH="$(STAC_DIR)" \
+	PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}' \
+	HTTP_CACHE_PATH="$(HTTP_CACHE_PATH)"
+
 test: ## Run tests in docker
-	docker compose exec app pytest tests/ -v
+	$(DOCKER_ENV) docker compose exec app-duckdb pytest tests/ -v
 
 test-build: ## Build and run tests in docker
-	docker compose build
-	docker compose up -d
-	docker compose exec app pytest tests/ -v
-	docker compose down
+	$(DOCKER_ENV) docker compose build
+	$(DOCKER_ENV) docker compose up -d
+	@echo "Waiting for containers to be ready..."
+	@sleep 5
+	$(DOCKER_ENV) docker compose exec app-duckdb pytest tests/ -v
+	$(DOCKER_ENV) docker compose down
 
 restart: down up-d ## Restart detached
 
