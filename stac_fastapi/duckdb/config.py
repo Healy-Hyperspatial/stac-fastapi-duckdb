@@ -1,6 +1,7 @@
 """DuckDB runtime configuration and data source mapping."""
 import json
 import os
+import logging
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -10,6 +11,7 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 # from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.config import ApiSettings
 
+logger = logging.getLogger(__name__)
 
 class DuckDBSettings(ApiSettings, ApiBaseSettings):
     """DuckDB API settings and configuration."""
@@ -25,7 +27,6 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
     # enable_response_models: bool = False
 
     # DuckDB-specific settings
-    http_cache_path: str = os.getenv("HTTP_CACHE_PATH", "/tmp/duckdb_http_cache")
     stac_file_path: str = os.getenv("STAC_FILE_PATH", "/app/stac_collections")
     parquet_urls_json: str = os.getenv("PARQUET_URLS_JSON", "{}")
     _parquet_urls: Dict[str, str] = {}
@@ -34,9 +35,6 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
         """Initialize the settings."""
         super().__init__(**data)
         self._parquet_urls = json.loads(self.parquet_urls_json)
-
-        # Ensure cache directory exists
-        os.makedirs(self.http_cache_path, exist_ok=True)
 
         # Validate STAC file path if set
         if self.stac_file_path and not os.path.isdir(self.stac_file_path):
@@ -102,25 +100,51 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
 
     @contextmanager
     def create_connection(self):
-        """Create a per-request DuckDB connection with httpfs and basic caching configured."""
+        """Create a per-request DuckDB connection with httpfs and spatial extensions configured."""
         conn = duckdb.connect(database=":memory:")
         try:
             # Enable remote I/O via httpfs where available
             try:
                 conn.execute("INSTALL httpfs;")
-            except Exception:
-                pass
+                logger.info("Successfully installed httpfs extension")
+            except Exception as e:
+                logger.warning(f"Failed to install httpfs extension: {str(e)}")
+                
             try:
                 conn.execute("LOAD httpfs;")
-            except Exception:
-                pass
+                logger.info("Successfully loaded httpfs extension")
+            except Exception as e:
+                logger.warning(f"Failed to load httpfs extension: {str(e)}")
+                
+            # Install and load spatial extension for geometry functions
+            try:
+                conn.execute("INSTALL spatial;")
+                logger.info("Successfully installed spatial extension")
+            except Exception as e:
+                logger.warning(f"Failed to install spatial extension: {str(e)}")
+                
+            try:
+                conn.execute("LOAD spatial;")
+                logger.info("Successfully loaded spatial extension")
+            except Exception as e:
+                logger.error(f"Failed to load spatial extension: {str(e)}")
+                logger.error("Spatial functions like ST_Intersects will not work without the spatial extension")
+                
             # Best-effort caching knobs
             try:
-                conn.execute("SET enable_http_metadata_cache=true")
+                # Enable object cache
                 conn.execute("SET enable_object_cache=true")
-                conn.execute(f"SET http_metadata_cache='{self.http_cache_path}'")
-            except Exception:
-                pass
+                logger.info("Enabled object cache")
+                
+                # Enable parquet metadata cache
+                try:
+                    conn.execute("SET parquet_metadata_cache=true")
+                    logger.info("Enabled parquet metadata cache")
+                except Exception as e:
+                    logger.warning(f"Could not enable parquet metadata cache: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Failed to configure caching: {str(e)}")
+                
             yield conn
         finally:
             try:

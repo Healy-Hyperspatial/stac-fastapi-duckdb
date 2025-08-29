@@ -341,30 +341,62 @@ class DatabaseLogic:
             return {"eq": interval.strip()}
 
     @staticmethod
-    def apply_bbox_filter(search: dict, bbox: List):
+    def apply_bbox_filter(search: dict, bbox):
         """Filter search results based on bounding box.
 
         Args:
-            search (Search): The search object to apply the filter to.
-            bbox (List): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
+            search (dict): The search object to apply the filter to.
+            bbox (Union[List, str]): The bounding box coordinates [west, south, east, north]
+                                     or a comma-separated string "west,south,east,north".
 
         Returns:
-            search (Search): The search object with the bounding box filter applied.
-
-        Notes:
-            The bounding box is transformed into a polygon using the `bbox2polygon` function and
-            a geo_shape filter is added to the search object, set to intersect with the specified polygon.
+            dict: The search object with the bounding box filter applied.
         """
-        # geojson_polygon = {"type": "Polygon", "coordinates": bbox2polygon(*bbox)}
-        # search.add_filter(
-        #     {
-        #         "geometry": {
-        #             "$geoIntersects": {
-        #                 "$geometry": geojson_polygon,
-        #             }
-        #         }
-        #     }
-        # )
+        if not bbox:
+            logger.debug("No bbox provided, skipping spatial filter")
+            return search
+            
+        # Ensure bbox is a list of floats
+        # The bbox should already be converted to a list of floats by the core client
+        # But we'll handle string input just in case
+        if isinstance(bbox, str):
+            try:
+                logger.debug(f"Converting bbox string '{bbox}' to list of floats")
+                bbox = [float(coord.strip()) for coord in bbox.split(',')]
+            except (ValueError, AttributeError):
+                logger.warning(f"Invalid bbox format: {bbox}. Expected comma-separated list of 4 coordinates.")
+                return search
+                
+        # Validate bbox format
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            logger.warning(f"Expected bbox with 4 coordinates, got {bbox}")
+            return search
+            
+        try:
+            west, south, east, north = map(float, bbox)
+            logger.debug(f"Using bbox coordinates: west={west}, south={south}, east={east}, north={north}")
+            
+            # Validate coordinates
+            if not all(isinstance(coord, (int, float)) for coord in [west, south, east, north]):
+                logger.warning(f"Invalid bbox coordinates: {bbox}")
+                return search
+                
+            # Create spatial filter using DuckDB's ST_Intersects with a bounding box polygon
+            bbox_wkt = f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
+            spatial_filter = f"ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}'))"
+            logger.debug(f"Created spatial filter with WKT: {bbox_wkt}")
+            
+            # Add to filters list
+            if 'filters' not in search:
+                search['filters'] = []
+            search['filters'].append(spatial_filter)
+            logger.info(f"Applied bbox filter with coordinates: {bbox}")
+            
+        except Exception as e:
+            logger.error(f"Error applying bbox filter: {str(e)}")
+            import traceback
+            logger.debug(f"Bbox filter error traceback: {traceback.format_exc()}")
+            
         return search
 
     @staticmethod
@@ -375,21 +407,26 @@ class DatabaseLogic:
         """Filter search results based on intersecting geometry.
 
         Args:
-            search (Search): The search object to apply the filter to.
+            search (dict): The search object to apply the filter to.
             intersects (Geometry): The intersecting geometry, represented as a GeoJSON-like object.
 
         Returns:
-            search (Search): The search object with the intersecting geometry filter applied.
-
-        Notes:
-            A geo_shape filter is added to the search object, set to intersect with the specified geometry.
+            dict: The search object with the intersecting geometry filter applied.
         """
-        pass
-        # geometry_dict = {"type": intersects.type, "coordinates": intersects.coordinates}
-        # search.add_filter(
-        #     {"geometry": {"$geoIntersects": {"$geometry": geometry_dict}}}
-        # )
-        # return search
+        if not intersects:
+            return search
+            
+        # Convert GeoJSON geometry to WKT for DuckDB
+        import json
+        geojson_str = json.dumps({"type": intersects.type, "coordinates": intersects.coordinates})
+        spatial_filter = f"ST_Intersects(geometry, ST_GeomFromGeoJSON('{geojson_str}'))"
+        
+        # Add to filters list
+        if 'filters' not in search:
+            search['filters'] = []
+        search['filters'].append(spatial_filter)
+        
+        return search
 
     @staticmethod
     def apply_stacql_filter(search: dict, op: str, field: str, value: float):
@@ -768,9 +805,17 @@ class DatabaseLogic:
 
         # Sorting
         if sort:
-            sort_clause = ", ".join(
-                f"{field} {direction['order']}" for field, direction in sort.items()
-            )
+            # Handle different sort formats
+            if 'field' in sort and 'direction' in sort:
+                # Format: {"field": "id", "direction": "asc"}
+                field = sort['field']
+                direction = sort['direction']
+                sort_clause = f"{field} {direction}"
+            else:
+                # Format: {"field1": {"order": "asc"}, "field2": {"order": "desc"}}
+                sort_clause = ", ".join(
+                    f"{field} {direction['order']}" for field, direction in sort.items()
+                )
             base_sql += f" ORDER BY {sort_clause}"
 
         # Pagination: mimic ES search_after pattern with offset-based approach
