@@ -15,7 +15,6 @@ services:
       - STAC_FILE_PATH=/app/stac_collections
       - BACKEND=duckdb
       - PARQUET_URLS_JSON=${PARQUET_URLS_JSON}
-      - HTTP_CACHE_PATH=${HTTP_CACHE_PATH:-/tmp/duckdb_http_cache}
     ports:
       - "8085:8084"
     volumes:

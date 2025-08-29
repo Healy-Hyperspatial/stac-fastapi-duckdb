@@ -353,6 +353,7 @@ class DatabaseLogic:
             dict: The search object with the bounding box filter applied.
         """
         if not bbox:
+            logger.debug("No bbox provided, skipping spatial filter")
             return search
             
         # Ensure bbox is a list of floats
@@ -360,9 +361,10 @@ class DatabaseLogic:
         # But we'll handle string input just in case
         if isinstance(bbox, str):
             try:
+                logger.debug(f"Converting bbox string '{bbox}' to list of floats")
                 bbox = [float(coord.strip()) for coord in bbox.split(',')]
             except (ValueError, AttributeError):
-                logger.warning(f"Invalid bbox format: {bbox}")
+                logger.warning(f"Invalid bbox format: {bbox}. Expected comma-separated list of 4 coordinates.")
                 return search
                 
         # Validate bbox format
@@ -372,6 +374,7 @@ class DatabaseLogic:
             
         try:
             west, south, east, north = map(float, bbox)
+            logger.debug(f"Using bbox coordinates: west={west}, south={south}, east={east}, north={north}")
             
             # Validate coordinates
             if not all(isinstance(coord, (int, float)) for coord in [west, south, east, north]):
@@ -381,14 +384,18 @@ class DatabaseLogic:
             # Create spatial filter using DuckDB's ST_Intersects with a bounding box polygon
             bbox_wkt = f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
             spatial_filter = f"ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}'))"
+            logger.debug(f"Created spatial filter with WKT: {bbox_wkt}")
             
             # Add to filters list
             if 'filters' not in search:
                 search['filters'] = []
             search['filters'].append(spatial_filter)
+            logger.info(f"Applied bbox filter with coordinates: {bbox}")
             
         except Exception as e:
             logger.error(f"Error applying bbox filter: {str(e)}")
+            import traceback
+            logger.debug(f"Bbox filter error traceback: {traceback.format_exc()}")
             
         return search
 
