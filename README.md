@@ -38,7 +38,7 @@ The easiest way to get started is using Docker and the provided Makefile:
 
 1. **Clone the repository** (if you haven't already):
    ```bash
-   git clone https://github.com/your-org/stac-fastapi-duckdb.git
+   git clone https://github.com/Healy-Hyperspatial/stac-fastapi-duckdb.git
    cd stac-fastapi-duckdb
    ```
 
