@@ -16,7 +16,7 @@ This project is built on the following technologies: STAC, stac-fastapi, SFEOS c
   <a href="https://stacspec.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
   <a href="https://www.python.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/python.png" alt="Python" height="80" hspace="10"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
-  <a href="https://www.mongodb.com/"><img src="assets/duckdb-icon-logo-png.png" alt="DuckDB" height="80" hspace="10"></a>
+  <a href="https://duckdb.org/"><img src="https://raw.githubusercontent.com/Healy-Hyperspatial/stac-fastapi-duckdb/refs/heads/main/assets/duckdb-icon-logo-png.png" alt="DuckDB" height="80" hspace="10"></a>
   <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"><img src="https://raw.githubusercontent.com/Healy-Hyperspatial/stac-fastapi-mongo/refs/heads/main/assets/sfeos-bw.png" alt="stac-fastapi-core" height="83" hspace="10"></a>
 </p>
 
