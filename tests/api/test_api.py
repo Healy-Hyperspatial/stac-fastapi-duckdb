@@ -120,3 +120,95 @@ async def test_real_item_fixture(test_item):
     assert "collection" in test_item
     assert "geometry" in test_item
     assert "properties" in test_item
+
+
+@pytest.mark.asyncio
+async def test_bbox_no_results(app_client):
+    """Test bbox filtering that returns no results."""
+    # Use a bbox in the middle of the ocean where no land data exists
+    bbox = "0,0,1,1"  # Small area in Gulf of Guinea
+    response = await app_client.get(f"/collections/io-lulc-9-class/items?bbox={bbox}&limit=10")
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["type"] == "FeatureCollection"
+    assert "features" in data
+    assert len(data["features"]) == 0
+    assert data["numMatched"] == 0
+    assert data["numReturned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_datetime_no_results(app_client):
+    """Test datetime filtering that returns no results."""
+    # Use a future date range where no data exists
+    datetime_range = "2030-01-01T00:00:00Z/2031-01-01T00:00:00Z"
+    response = await app_client.get(f"/collections/io-lulc-9-class/items?datetime={datetime_range}&limit=10")
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["type"] == "FeatureCollection"
+    assert "features" in data
+    assert len(data["features"]) == 0
+    assert data["numMatched"] == 0
+    assert data["numReturned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_combined_filters_no_results(app_client):
+    """Test combined bbox + datetime filters that return no results."""
+    bbox = "0,0,1,1"  # Ocean area
+    datetime_range = "2030-01-01T00:00:00Z/2031-01-01T00:00:00Z"  # Future dates
+    
+    response = await app_client.get(
+        f"/collections/io-lulc-9-class/items?bbox={bbox}&datetime={datetime_range}&limit=10"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["type"] == "FeatureCollection"
+    assert "features" in data
+    assert len(data["features"]) == 0
+    assert data["numMatched"] == 0
+    assert data["numReturned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_no_results(app_client):
+    """Test POST /search endpoint with filters that return no results."""
+    search_body = {
+        "collections": ["io-lulc-9-class"],
+        "limit": 10,
+        "bbox": [0, 0, 1, 1],  # Ocean area
+        "datetime": "2030-01-01T00:00:00Z/2031-01-01T00:00:00Z"  # Future dates
+    }
+    
+    response = await app_client.post("/search", json=search_body)
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["type"] == "FeatureCollection"
+    assert "features" in data
+    assert len(data["features"]) == 0
+    assert data["numMatched"] == 0
+    assert data["numReturned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_invalid_bbox_format(app_client):
+    """Test invalid bbox format handling."""
+    # Invalid bbox with only 3 coordinates
+    bbox = "-66,-16,-60"
+    response = await app_client.get(f"/collections/io-lulc-9-class/items?bbox={bbox}")
+    # Should return 400 or handle gracefully
+    assert response.status_code in [400, 422]
+
+
+@pytest.mark.asyncio
+async def test_invalid_datetime_format(app_client):
+    """Test invalid datetime format handling."""
+    # Invalid datetime format
+    datetime_invalid = "not-a-date"
+    response = await app_client.get(f"/collections/io-lulc-9-class/items?datetime={datetime_invalid}")
+    # Should return 400 or handle gracefully
+    assert response.status_code in [400, 422]
