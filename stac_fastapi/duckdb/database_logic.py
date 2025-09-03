@@ -221,7 +221,7 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_datetime_filter(search: dict, interval: Optional[str]) -> dict:
+    def apply_datetime_filter(search: dict, datetime: Optional[str] = None, interval: Optional[str] = None) -> dict:
         """Apply a filter to search based on datetime, start_datetime, and end_datetime fields.
 
         This emulates the stac-fastapi-elasticsearch datetime filter logic for DuckDB:
@@ -232,21 +232,24 @@ class DatabaseLogic:
 
         Args:
             search (dict): The search dictionary containing query parameters.
-            interval (Optional[str]): The datetime interval to filter by. Can be:
+            datetime (Optional[str]): The datetime interval to filter by. Can be:
                 - A single datetime string (e.g., "2023-01-01T12:00:00")
                 - A datetime range string (e.g., "2023-01-01/2023-12-31")
                 - None to skip filtering
+            interval (Optional[str]): Legacy parameter name for datetime interval.
 
         Returns:
-            dict: The updated search dictionary with datetime filters applied.
+            tuple: (search dict, datetime_search dict) for compatibility with stac-fastapi-core 6.2.1
         """
-        if not interval:
-            return search
+        # Handle both new 'datetime' parameter and legacy 'interval' parameter
+        datetime_value = datetime or interval
+        if not datetime_value:
+            return search, None
 
         # Parse the interval string into datetime_search format
-        datetime_search = DatabaseLogic._parse_datetime_interval(interval)
+        datetime_search = DatabaseLogic._parse_datetime_interval(datetime_value)
         if not datetime_search:
-            return search
+            return search, None
 
         # Initialize the filters list if it doesn't exist
         if 'filters' not in search:
@@ -306,7 +309,8 @@ class DatabaseLogic:
                 )"""
                 search['filters'].append(lte_condition)
 
-        return search
+        # Return tuple for compatibility with stac-fastapi-core 6.2.1
+        return search, datetime_search
 
     @staticmethod
     def _parse_datetime_interval(interval: str) -> dict:
@@ -341,19 +345,22 @@ class DatabaseLogic:
             return {"eq": interval.strip()}
 
     @staticmethod
-    def apply_bbox_filter(search: dict, bbox):
+    def apply_bbox_filter(search: dict, bbox: List):
         """Filter search results based on bounding box.
 
         Args:
             search (dict): The search object to apply the filter to.
-            bbox (Union[List, str]): The bounding box coordinates [west, south, east, north]
-                                     or a comma-separated string "west,south,east,north".
+            bbox (List): The bounding box coordinates [west, south, east, north].
 
         Returns:
             dict: The search object with the bounding box filter applied.
         """
-        if not bbox:
-            logger.debug("No bbox provided, skipping spatial filter")
+        # Ensure search is a dict
+        if not isinstance(search, dict):
+            logger.error(f"Expected search to be dict, got {type(search)}: {search}")
+            return search if isinstance(search, dict) else {}
+            
+        if not bbox or len(bbox) != 4:
             return search
             
         # Ensure bbox is a list of floats
@@ -476,14 +483,14 @@ class DatabaseLogic:
         conditions and applies it to the provided search dictionary.
 
         Args:
-            search (dict): The search dictionary to which the filter will be applied.
+            search (dict): The search dictionary containing query parameters.
             _filter (Optional[Dict[str, Any]]): The CQL2 filter in dictionary form.
                                                 If None, the original search is returned.
 
         Returns:
-            dict: The modified search dictionary with the filter applied.
+            dict: Updated search dictionary with CQL2 filters applied.
         """
-        if _filter is None:
+        if not _filter:
             return search
 
         try:
@@ -495,8 +502,9 @@ class DatabaseLogic:
                     search['filters'] = []
                 search['filters'].append(sql_condition)
         except Exception as e:
-            logger.warning(f"Failed to apply CQL2 filter: {str(e)}")
+            logger.error(f"Error applying CQL2 filter: {str(e)}")
             # Return search unchanged if filter conversion fails
+            return search
             
         return search
 
@@ -733,6 +741,7 @@ class DatabaseLogic:
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
+        datetime_search: Optional[dict] = None,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
