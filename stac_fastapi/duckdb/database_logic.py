@@ -865,48 +865,51 @@ class DatabaseLogic:
 
         # Convert each row to a proper STAC item using create_stac_item
         items = []
+        failed_items = 0
         for idx, row in actual_results.iterrows():
-                # Convert row to a single-row DataFrame for create_stac_item
-                row_df = row.to_frame().transpose()
-                item_id = row.get("id", "")
-                collection_id = row.get("collection", "")
-
+            item_id = row.get("id", "")
+            collection_id = row.get("collection", "") or row.get("collection_1", "")
+            try:
+                # Create a DataFrame with a single row for this item
+                row_df = pd.DataFrame([row])
+                item = create_stac_item(df=row_df, item_id=item_id, collection_id=collection_id)
+                if not item or not isinstance(item, dict):
+                    logger.warning(f"create_stac_item returned invalid item for {item_id}: {type(item)}")
+                    failed_items += 1
+                    continue
+                items.append(item)
+            except Exception as e:
+                logger.error(f"Failed to create STAC item for {item_id} (row {idx}): {str(e)}")
                 try:
-                    # Log the row data for debugging
-                    logger.debug(
-                        f"Creating STAC item for {item_id} in collection {collection_id}"
-                    )
+                    # Safely log row data types
+                    if hasattr(row, 'dtypes'):
+                        dtypes_info = {col: str(row.dtypes[col]) for col in row.index}
+                        logger.error(f"Row data types: {dtypes_info}")
+                    else:
+                        logger.error("No dtypes available")
+                    
+                    # Log sample data safely
+                    sample_data = {}
+                    for col in row.index if hasattr(row, 'index') else row.keys():
+                        try:
+                            value = row[col]
+                            sample_data[col] = f"{type(value).__name__}: {str(value)[:50]}..."
+                        except:
+                            sample_data[col] = "Error accessing value"
+                    logger.error(f"Row sample data: {sample_data}")
+                    
+                    # Log specific problematic fields
+                    if 'geometry' in row and row.get('geometry') is not None:
+                        geom_val = row.get('geometry')
+                        logger.error(f"Geometry type: {type(geom_val)}, value: {str(geom_val)[:200]}...")
+                except Exception as log_error:
+                    logger.error(f"Error in logging row data: {str(log_error)}")
+                failed_items += 1
 
-                    # Use create_stac_item to create the STAC item
-                    item = create_stac_item(
-                        df=row_df, item_id=item_id, collection_id=collection_id
-                    )
-
-                    # Verify the item was created successfully
-                    if not item or not isinstance(item, dict):
-                        logger.error(
-                            f"create_stac_item returned invalid result for {item_id}: {item}"
-                        )
-                        continue
-
-                    items.append(item)
-                    logger.debug(f"Successfully created STAC item for {item_id}")
-
-                except Exception as e:
-                    # Log detailed error information
-                    logger.error(
-                        f"Failed to create STAC item for {item_id} (row {idx}): {str(e)}"
-                    )
-                    logger.debug(f"Row data: {row.to_dict()}")
-
-                    # If it's a specific error code 0, log additional context
-                    if str(e) == "0":
-                        logger.error(
-                            f"Item creation failed with error code 0 for {item_id}"
-                        )
-                        logger.error(
-                            "This might indicate a problem with the item data or the create_stac_item function"
-                        )
+        # Log summary of item conversion
+        if failed_items > 0:
+            logger.warning(f"Failed to convert {failed_items} out of {len(actual_results)} items to STAC format")
+            logger.info(f"Successfully returned {len(items)} items out of {len(actual_results)} rows")
 
         return items, total, next_token
         

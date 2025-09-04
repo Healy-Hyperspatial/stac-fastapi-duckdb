@@ -6,9 +6,9 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "duckdb==1.3.2",
-    "stac-fastapi-core==6.2.1",
-    "sfeos-helpers==6.2.1",
+    "duckdb~=1.3.2",
+    "stac-fastapi-core~=6.2.1",
+    "sfeos-helpers~=6.2.1",
     "uvicorn",
     "starlette",
     "numpy",
@@ -45,6 +45,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: MIT License",
     ],
     url="https://github.com/Healy-Hyperspatial/stac-fastapi-duckdb",
