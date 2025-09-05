@@ -38,22 +38,14 @@ jobs:
           python -m pip install pre-commit
           pre-commit run --all-files
 
-      - name: Install DuckDB stac-fastapi
+      - name: Build Docker image
         run: |
-          pip install .[dev,server]
-          pip install pytest-timeout
+          docker compose build
 
-      - name: Create test data directory
+      - name: Run test suite in Docker
         run: |
-          mkdir -p stac_collections/io-lulc-9-class
-
-      - name: Set up test environment variables
-        run: |
-          echo "STAC_FILE_PATH=${{ github.workspace }}/stac_collections" >> $GITHUB_ENV
-          echo "PARQUET_URLS_JSON={\"io-lulc-9-class\": \"file://${{ github.workspace }}/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet\"}" >> $GITHUB_ENV
-
-      - name: Run test suite
-        run: |
-          python -m pytest tests/ -v --timeout=300
+          STAC_FILE_PATH="/home/runner/work/stac-fastapi-duckdb/stac-fastapi-duckdb/stac_collections" \
+          PARQUET_URLS_JSON='{"io-lulc-9-class":"file:///app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet"}' \
+          docker compose run --rm app-duckdb pytest tests/ -v --timeout=300
         env:
           ENVIRONMENT: testing
