@@ -30,6 +30,7 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
     # DuckDB-specific settings
     stac_file_path: str = os.getenv("STAC_FILE_PATH", "/app/stac_collections")
     parquet_urls_json: str = os.getenv("PARQUET_URLS_JSON", "{}")
+    duckdb_database_path: str = os.getenv("DUCKDB_DATABASE_PATH", "/tmp/stac_fastapi.duckdb")
     _parquet_urls: Dict[str, str] = {}
 
     def __init__(self, **data: Any) -> None:
@@ -102,7 +103,8 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
     @contextmanager
     def create_connection(self):
         """Create a per-request DuckDB connection with httpfs and spatial extensions configured."""
-        conn = duckdb.connect(database=":memory:")
+        # Use disk-based database for Lambda compatibility and better performance
+        conn = duckdb.connect(database=self.duckdb_database_path)
         try:
             # Enable remote I/O via httpfs where available
             try:
