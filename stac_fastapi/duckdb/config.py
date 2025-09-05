@@ -30,7 +30,9 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
     # DuckDB-specific settings
     stac_file_path: str = os.getenv("STAC_FILE_PATH", "/app/stac_collections")
     parquet_urls_json: str = os.getenv("PARQUET_URLS_JSON", "{}")
-    duckdb_database_path: str = os.getenv("DUCKDB_DATABASE_PATH", "/tmp/stac_fastapi.duckdb")
+    duckdb_database_path: str = os.getenv(
+        "DUCKDB_DATABASE_PATH", "/tmp/stac_fastapi.duckdb"
+    )
     _parquet_urls: Dict[str, str] = {}
 
     def __init__(self, **data: Any) -> None:
