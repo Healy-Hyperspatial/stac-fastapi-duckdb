@@ -1,0 +1,58 @@
+name: stac-fastapi-duckdb
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - features/**
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      matrix:
+        python-version: [ "3.9", "3.10", "3.11", "3.12"]
+
+    name: Python ${{ matrix.python-version }} testing with DuckDB
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            **/setup.py
+
+      - name: Lint code
+        if: ${{ matrix.python-version == '3.11' }}
+        run: |
+          python -m pip install pre-commit
+          pre-commit run --all-files
+
+      - name: Install DuckDB stac-fastapi
+        run: |
+          pip install .[dev,server]
+
+      - name: Create test data directory
+        run: |
+          mkdir -p stac_collections/io-lulc-9-class
+
+      - name: Set up test environment variables
+        run: |
+          echo "STAC_FILE_PATH=${{ github.workspace }}/stac_collections" >> $GITHUB_ENV
+          echo "PARQUET_URLS_JSON={\"io-lulc-9-class\": \"file://${{ github.workspace }}/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet\"}" >> $GITHUB_ENV
+
+      - name: Run test suite
+        run: |
+          python -m pytest tests/ -v --timeout=300
+        env:
+          ENVIRONMENT: testing
