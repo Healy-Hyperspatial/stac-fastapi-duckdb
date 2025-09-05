@@ -5,10 +5,9 @@ from typing import Any, Dict, Optional
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from stac_pydantic import api
-
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.core.core import CoreClient
+
 from stac_fastapi.duckdb.app import app_config
 from stac_fastapi.duckdb.config import DuckDBSettings
 from stac_fastapi.duckdb.database_logic import DatabaseLogic
@@ -25,8 +24,8 @@ class Context:
 class MockRequest:
     base_url = "http://test-server"
     url = "http://test-server/test"
-    headers = {}
-    query_params = {}
+    headers: Dict[str, str] = {}
+    query_params: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -61,14 +60,12 @@ def test_collection() -> Dict:
         "description": "Impact Observatory Land Use Land Cover 9-class",
         "license": "proprietary",
         "extent": {
-            "spatial": {
-                "bbox": [[-180, -90, 180, 90]]
-            },
+            "spatial": {"bbox": [[-180, -90, 180, 90]]},
             "temporal": {
                 "interval": [["2017-01-01T00:00:00Z", "2023-12-31T23:59:59Z"]]
-            }
+            },
         },
-        "links": []
+        "links": [],
     }
 
 
@@ -77,7 +74,7 @@ def settings():
     """DuckDB settings for testing with real GeoParquet file."""
     return DuckDBSettings(
         parquet_urls_json='{"io-lulc-9-class": "/app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet"}',
-        stac_file_path="/app/stac_collections"
+        stac_file_path="/app/stac_collections",
     )
 
 
@@ -102,7 +99,7 @@ async def test_item(database):
         search={},
         limit=1,
         token=None,
-        sort={"field": "id", "direction": "asc"}
+        sort={"field": "id", "direction": "asc"},
     )
     if items:
         return items[0]
@@ -115,17 +112,17 @@ async def test_item(database):
             "collection": "io-lulc-9-class",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [[
-                    [-66, -16], [-60, -16], [-60, -8], [-66, -8], [-66, -16]
-                ]]
+                "coordinates": [
+                    [[-66, -16], [-60, -16], [-60, -8], [-66, -8], [-66, -16]]
+                ],
             },
             "bbox": [-66, -16, -60, -8],
             "properties": {
                 "start_datetime": "2022-01-01T00:00:00Z",
-                "end_datetime": "2022-12-31T23:59:59Z"
+                "end_datetime": "2022-12-31T23:59:59Z",
             },
             "assets": {},
-            "links": []
+            "links": [],
         }
 
 

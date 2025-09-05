@@ -15,6 +15,7 @@ from typing import (
     Union,
 )
 
+import pandas as pd
 from fastapi import HTTPException, Request
 from stac_fastapi.core import serializers
 from stac_fastapi.extensions.core import SortExtension
@@ -157,7 +158,7 @@ class DatabaseLogic:
             if collection_id not in [src[0] for src in sources]:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Collection {collection_id} not found in configuration.",
+                    detail=f"Collection {collection_id} not in configuration.",
                 )
 
             _, url = sources[0]
@@ -169,7 +170,7 @@ class DatabaseLogic:
                     SELECT * FROM (
                         SELECT *, ? AS collection
                         FROM read_parquet(?)
-                    )
+                   )
                     WHERE id = ?
                     LIMIT 1
                 """
@@ -221,41 +222,46 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_datetime_filter(search: dict, interval: Optional[str]) -> dict:
+    def apply_datetime_filter(
+        search: dict, datetime: Optional[str] = None, interval: Optional[str] = None
+    ) -> Tuple[dict, Optional[dict]]:
         """Apply a filter to search based on datetime, start_datetime, and end_datetime fields.
 
         This emulates the stac-fastapi-elasticsearch datetime filter logic for DuckDB:
-        - For exact matches: include items with matching datetime OR items with null datetime 
+        - For exact matches: include items with matching datetime OR items with null datetime
           where the time falls within their start_datetime/end_datetime range
-        - For date ranges: include items with datetime in range OR items with null datetime 
+        - For date ranges: include items with datetime in range OR items with null datetime
           that overlap the search range
 
         Args:
             search (dict): The search dictionary containing query parameters.
-            interval (Optional[str]): The datetime interval to filter by. Can be:
+            datetime (Optional[str]): The datetime interval to filter by. Can be:
                 - A single datetime string (e.g., "2023-01-01T12:00:00")
                 - A datetime range string (e.g., "2023-01-01/2023-12-31")
                 - None to skip filtering
+            interval (Optional[str]): Legacy parameter name for datetime interval.
 
         Returns:
-            dict: The updated search dictionary with datetime filters applied.
+            tuple: (search dict, datetime_search dict) for compatibility with stac-fastapi-core 6.2.1
         """
-        if not interval:
-            return search
+        # Handle both new 'datetime' parameter and legacy 'interval' parameter
+        datetime_value = datetime or interval
+        if not datetime_value:
+            return search, None
 
         # Parse the interval string into datetime_search format
-        datetime_search = DatabaseLogic._parse_datetime_interval(interval)
+        datetime_search = DatabaseLogic._parse_datetime_interval(datetime_value)
         if not datetime_search:
-            return search
+            return search, None
 
         # Initialize the filters list if it doesn't exist
-        if 'filters' not in search:
-            search['filters'] = []
+        if "filters" not in search:
+            search["filters"] = []
 
         # Build SQL conditions based on datetime filter type
-        if 'eq' in datetime_search:
+        if "eq" in datetime_search:
             # Exact match case: emulate ES "should" logic with OR conditions
-            exact_datetime = datetime_search['eq']
+            exact_datetime = datetime_search["eq"]
             datetime_condition = f"""(
                 (datetime IS NOT NULL AND datetime = '{exact_datetime}')
                 OR 
@@ -265,12 +271,12 @@ class DatabaseLogic:
                  AND start_datetime <= '{exact_datetime}' 
                  AND end_datetime >= '{exact_datetime}')
             )"""
-            search['filters'].append(datetime_condition)
+            search["filters"].append(datetime_condition)
         else:
             # Range case: handle gte/lte combinations
-            gte_value = datetime_search.get('gte')
-            lte_value = datetime_search.get('lte')
-            
+            gte_value = datetime_search.get("gte")
+            lte_value = datetime_search.get("lte")
+
             if gte_value and lte_value:
                 # Both start and end of range specified
                 range_condition = f"""(
@@ -284,7 +290,7 @@ class DatabaseLogic:
                      AND start_datetime <= '{lte_value}' 
                      AND end_datetime >= '{gte_value}')
                 )"""
-                search['filters'].append(range_condition)
+                search["filters"].append(range_condition)
             elif gte_value:
                 # Only start of range specified
                 gte_condition = f"""(
@@ -294,7 +300,7 @@ class DatabaseLogic:
                      AND end_datetime IS NOT NULL
                      AND end_datetime >= '{gte_value}')
                 )"""
-                search['filters'].append(gte_condition)
+                search["filters"].append(gte_condition)
             elif lte_value:
                 # Only end of range specified
                 lte_condition = f"""(
@@ -304,32 +310,33 @@ class DatabaseLogic:
                      AND start_datetime IS NOT NULL
                      AND start_datetime <= '{lte_value}')
                 )"""
-                search['filters'].append(lte_condition)
+                search["filters"].append(lte_condition)
 
-        return search
+        # Return tuple for compatibility with stac-fastapi-core 6.2.1
+        return search, datetime_search
 
     @staticmethod
     def _parse_datetime_interval(interval: str) -> dict:
         """Parse a datetime interval string into a search dictionary.
-        
+
         Args:
             interval (str): The datetime interval. Can be:
                 - A single datetime string (e.g., "2023-01-01T12:00:00")
                 - A datetime range string (e.g., "2023-01-01/2023-12-31")
                 - An open-ended range (e.g., "2023-01-01/.." or "../2023-12-31")
-        
+
         Returns:
             dict: A dictionary with 'eq', 'gte', and/or 'lte' keys for filtering.
         """
         if not interval:
             return {}
-        
+
         # Handle range intervals with "/" separator
         if "/" in interval:
             parts = interval.split("/", 1)
             start_date = parts[0].strip() if parts[0].strip() != ".." else None
             end_date = parts[1].strip() if parts[1].strip() != ".." else None
-            
+
             datetime_search = {}
             if start_date:
                 datetime_search["gte"] = start_date
@@ -341,62 +348,72 @@ class DatabaseLogic:
             return {"eq": interval.strip()}
 
     @staticmethod
-    def apply_bbox_filter(search: dict, bbox):
+    def apply_bbox_filter(search: dict, bbox: List):
         """Filter search results based on bounding box.
 
         Args:
             search (dict): The search object to apply the filter to.
-            bbox (Union[List, str]): The bounding box coordinates [west, south, east, north]
-                                     or a comma-separated string "west,south,east,north".
+            bbox (List): The bounding box coordinates [west, south, east, north].
 
         Returns:
             dict: The search object with the bounding box filter applied.
         """
-        if not bbox:
-            logger.debug("No bbox provided, skipping spatial filter")
+        # Ensure search is a dict
+        if not isinstance(search, dict):
+            logger.error(f"Expected search to be dict, got {type(search)}: {search}")
+            return search if isinstance(search, dict) else {}
+
+        if not bbox or len(bbox) != 4:
             return search
-            
+
         # Ensure bbox is a list of floats
         # The bbox should already be converted to a list of floats by the core client
         # But we'll handle string input just in case
         if isinstance(bbox, str):
             try:
                 logger.debug(f"Converting bbox string '{bbox}' to list of floats")
-                bbox = [float(coord.strip()) for coord in bbox.split(',')]
+                bbox = [float(coord.strip()) for coord in bbox.split(",")]
             except (ValueError, AttributeError):
-                logger.warning(f"Invalid bbox format: {bbox}. Expected comma-separated list of 4 coordinates.")
+                logger.warning(
+                    f"Invalid bbox format: {bbox}. Expected comma-separated list of 4 coordinates."
+                )
                 return search
-                
+
         # Validate bbox format
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             logger.warning(f"Expected bbox with 4 coordinates, got {bbox}")
             return search
-            
+
         try:
             west, south, east, north = map(float, bbox)
-            logger.debug(f"Using bbox coordinates: west={west}, south={south}, east={east}, north={north}")
-            
+            logger.debug(
+                f"Using bbox coordinates: west={west}, south={south}, east={east}, north={north}"
+            )
+
             # Validate coordinates
-            if not all(isinstance(coord, (int, float)) for coord in [west, south, east, north]):
+            if not all(
+                isinstance(coord, (int, float)) for coord in [west, south, east, north]
+            ):
                 logger.warning(f"Invalid bbox coordinates: {bbox}")
                 return search
-                
+
             # Create spatial filter using DuckDB's ST_Intersects with a bounding box polygon
             bbox_wkt = f"POLYGON(({west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}))"
             spatial_filter = f"ST_Intersects(geometry, ST_GeomFromText('{bbox_wkt}'))"
             logger.debug(f"Created spatial filter with WKT: {bbox_wkt}")
-            
+
             # Add to filters list
-            if 'filters' not in search:
-                search['filters'] = []
-            search['filters'].append(spatial_filter)
+            if "filters" not in search:
+                search["filters"] = []
+            search["filters"].append(spatial_filter)
             logger.info(f"Applied bbox filter with coordinates: {bbox}")
-            
+
         except Exception as e:
             logger.error(f"Error applying bbox filter: {str(e)}")
             import traceback
+
             logger.debug(f"Bbox filter error traceback: {traceback.format_exc()}")
-            
+
         return search
 
     @staticmethod
@@ -415,17 +432,20 @@ class DatabaseLogic:
         """
         if not intersects:
             return search
-            
+
         # Convert GeoJSON geometry to WKT for DuckDB
         import json
-        geojson_str = json.dumps({"type": intersects.type, "coordinates": intersects.coordinates})
+
+        geojson_str = json.dumps(
+            {"type": intersects.type, "coordinates": intersects.coordinates}
+        )
         spatial_filter = f"ST_Intersects(geometry, ST_GeomFromGeoJSON('{geojson_str}'))"
-        
+
         # Add to filters list
-        if 'filters' not in search:
-            search['filters'] = []
-        search['filters'].append(spatial_filter)
-        
+        if "filters" not in search:
+            search["filters"] = []
+        search["filters"].append(spatial_filter)
+
         return search
 
     @staticmethod
@@ -476,14 +496,14 @@ class DatabaseLogic:
         conditions and applies it to the provided search dictionary.
 
         Args:
-            search (dict): The search dictionary to which the filter will be applied.
+            search (dict): The search dictionary containing query parameters.
             _filter (Optional[Dict[str, Any]]): The CQL2 filter in dictionary form.
                                                 If None, the original search is returned.
 
         Returns:
-            dict: The modified search dictionary with the filter applied.
+            dict: Updated search dictionary with CQL2 filters applied.
         """
-        if _filter is None:
+        if not _filter:
             return search
 
         try:
@@ -491,22 +511,23 @@ class DatabaseLogic:
             sql_condition = self._cql2_to_sql(_filter)
             if sql_condition:
                 # Initialize filters if not present
-                if 'filters' not in search:
-                    search['filters'] = []
-                search['filters'].append(sql_condition)
+                if "filters" not in search:
+                    search["filters"] = []
+                search["filters"].append(sql_condition)
         except Exception as e:
-            logger.warning(f"Failed to apply CQL2 filter: {str(e)}")
+            logger.error(f"Error applying CQL2 filter: {str(e)}")
             # Return search unchanged if filter conversion fails
-            
+            return search
+
         return search
 
     def _cql2_to_sql(self, cql2_filter: Dict[str, Any]) -> Optional[str]:
         """
         Convert a CQL2 filter to SQL WHERE condition.
-        
+
         Args:
             cql2_filter: CQL2 filter dictionary
-            
+
         Returns:
             SQL WHERE condition string or None if conversion fails
         """
@@ -519,10 +540,10 @@ class DatabaseLogic:
     def _convert_cql2_expression(self, expr: Dict[str, Any]) -> str:
         """
         Recursively convert CQL2 expressions to SQL.
-        
+
         Args:
             expr: CQL2 expression dictionary
-            
+
         Returns:
             SQL condition string
         """
@@ -533,11 +554,11 @@ class DatabaseLogic:
         if "and" in expr:
             conditions = [self._convert_cql2_expression(sub) for sub in expr["and"]]
             return f"({' AND '.join(conditions)})"
-        
+
         if "or" in expr:
             conditions = [self._convert_cql2_expression(sub) for sub in expr["or"]]
             return f"({' OR '.join(conditions)})"
-        
+
         if "not" in expr:
             condition = self._convert_cql2_expression(expr["not"])
             return f"NOT ({condition})"
@@ -547,27 +568,27 @@ class DatabaseLogic:
             args = expr["="]
             left, right = self._format_operands(args[0], args[1])
             return f"{left} = {right}"
-        
+
         if "<>" in expr:
             args = expr["<>"]
             left, right = self._format_operands(args[0], args[1])
             return f"{left} <> {right}"
-        
+
         if "<" in expr:
             args = expr["<"]
             left, right = self._format_operands(args[0], args[1])
             return f"{left} < {right}"
-        
+
         if "<=" in expr:
             args = expr["<="]
             left, right = self._format_operands(args[0], args[1])
             return f"{left} <= {right}"
-        
+
         if ">" in expr:
             args = expr[">"]
             left, right = self._format_operands(args[0], args[1])
             return f"{left} > {right}"
-        
+
         if ">=" in expr:
             args = expr[">="]
             left, right = self._format_operands(args[0], args[1])
@@ -605,8 +626,16 @@ class DatabaseLogic:
 
     def _format_operands(self, left: Any, right: Any) -> tuple:
         """Format left and right operands for SQL comparison."""
-        left_formatted = self._format_field_name(left) if isinstance(left, dict) and "property" in left else self._format_value(left)
-        right_formatted = self._format_field_name(right) if isinstance(right, dict) and "property" in right else self._format_value(right)
+        left_formatted = (
+            self._format_field_name(left)
+            if isinstance(left, dict) and "property" in left
+            else self._format_value(left)
+        )
+        right_formatted = (
+            self._format_field_name(right)
+            if isinstance(right, dict) and "property" in right
+            else self._format_value(right)
+        )
         return left_formatted, right_formatted
 
     def _format_field_name(self, field: Any) -> str:
@@ -663,11 +692,11 @@ class DatabaseLogic:
         collection_ids: Optional[List[str]] = None,
     ) -> Optional[int]:
         """Get the total count of items matching the search criteria.
-        
+
         Args:
             search (dict): The search dictionary containing filters
             collection_ids (Optional[List[str]]): Collection IDs to search, or None for all
-            
+
         Returns:
             Optional[int]: Total count of matching items, or None if count failed
         """
@@ -681,7 +710,7 @@ class DatabaseLogic:
 
             # Resolve sources for the collections
             sources = self.settings.resolve_sources(collection_ids)
-            
+
             # Get filters from search
             item_ids: Optional[List[str]] = (
                 search.get("item_ids") if isinstance(search, dict) else None
@@ -690,22 +719,22 @@ class DatabaseLogic:
             # Build count query for each collection
             count_subqueries: List[str] = []
             count_params: List[Any] = []
-            
+
             for cid, url in sources:
                 count_sq = "SELECT COUNT(*) as count FROM read_parquet(?)"
                 count_params.append(url)
                 count_wheres: List[str] = []
-                
+
                 # Add item_ids filter if specified
                 if item_ids:
                     placeholders = ", ".join(["?"] * len(item_ids))
                     count_wheres.append(f"id IN ({placeholders})")
                     count_params.extend(item_ids)
-                
+
                 # Add datetime and other filters if specified
-                if 'filters' in search and search['filters']:
-                    count_wheres.extend(search['filters'])
-                
+                if "filters" in search and search["filters"]:
+                    count_wheres.extend(search["filters"])
+
                 if count_wheres:
                     count_sq += " WHERE " + " AND ".join(count_wheres)
                 count_subqueries.append(count_sq)
@@ -713,14 +742,20 @@ class DatabaseLogic:
             # Execute count query
             if not count_subqueries:
                 return 0
-                
+
             count_union_sql = " UNION ALL ".join(count_subqueries)
-            final_count_sql = f"SELECT SUM(count) as total_count FROM ({count_union_sql})"
-            
+            final_count_sql = (
+                f"SELECT SUM(count) as total_count FROM ({count_union_sql})"
+            )
+
             with self.settings.create_connection() as conn:
                 count_result = conn.execute(final_count_sql, count_params).fetchone()
-                return int(count_result[0]) if count_result and count_result[0] is not None else 0
-                
+                return (
+                    int(count_result[0])
+                    if count_result and count_result[0] is not None
+                    else 0
+                )
+
         except Exception as e:
             logger.warning(f"Failed to calculate total count: {str(e)}")
             return None
@@ -733,6 +768,7 @@ class DatabaseLogic:
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
+        datetime_search: Optional[dict] = None,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
@@ -766,9 +802,13 @@ class DatabaseLogic:
             # Get all available collection IDs from the settings
             all_collection_ids = list(self.settings.parquet_urls.keys())
             if not all_collection_ids:
-                raise HTTPException(status_code=404, detail="No collections available for search.")
+                raise HTTPException(
+                    status_code=404, detail="No collections available for search."
+                )
             collection_ids = all_collection_ids
-            print(f"No collections specified, searching all available: {collection_ids}")
+            print(
+                f"No collections specified, searching all available: {collection_ids}"
+            )
 
         # Resolve sources for the collections
         sources = self.settings.resolve_sources(collection_ids)
@@ -785,17 +825,17 @@ class DatabaseLogic:
             sq = "SELECT *, ? AS collection FROM read_parquet(?)"
             params.extend([cid, url])
             wheres: List[str] = []
-            
+
             # Add item_ids filter if specified
             if item_ids:
                 placeholders = ", ".join(["?"] * len(item_ids))
                 wheres.append(f"id IN ({placeholders})")
                 params.extend(item_ids)
-            
+
             # Add datetime filters if specified
-            if 'filters' in search and search['filters']:
-                wheres.extend(search['filters'])
-            
+            if "filters" in search and search["filters"]:
+                wheres.extend(search["filters"])
+
             if wheres:
                 sq += " WHERE " + " AND ".join(wheres)
             subqueries.append(sq)
@@ -806,10 +846,10 @@ class DatabaseLogic:
         # Sorting
         if sort:
             # Handle different sort formats
-            if 'field' in sort and 'direction' in sort:
+            if "field" in sort and "direction" in sort:
                 # Format: {"field": "id", "direction": "asc"}
-                field = sort['field']
-                direction = sort['direction']
+                field = sort["field"]
+                direction = sort["direction"]
                 sort_clause = f"{field} {direction}"
             else:
                 # Format: {"field1": {"order": "asc"}, "field2": {"order": "desc"}}
@@ -836,17 +876,20 @@ class DatabaseLogic:
         # Execute the main search query
         try:
             with self.settings.create_connection() as conn:
-                df = conn.execute(base_sql, params).df()
+                actual_results = conn.execute(base_sql, params).fetchdf()
         except Exception as e:
             if "not found" in str(e).lower():
                 from stac_fastapi.types.errors import NotFoundError
+
                 raise NotFoundError(f"Collections '{collection_ids}' do not exist")
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-        # Determine if there are more results and create next token
-        has_more = len(df) > limit if limit else False
-        actual_results = df.head(limit) if limit and has_more else df
-        
+        # Check if there are more results
+        has_more = len(actual_results) > limit if limit else False
+        if has_more:
+            # Remove the extra row we fetched
+            actual_results = actual_results.iloc[:-1]
+
         next_token = None
         if has_more and limit:
             next_token = str(offset_val + limit)
@@ -856,51 +899,68 @@ class DatabaseLogic:
 
         # Convert each row to a proper STAC item using create_stac_item
         items = []
+        failed_items = 0
         for idx, row in actual_results.iterrows():
-                # Convert row to a single-row DataFrame for create_stac_item
-                row_df = row.to_frame().transpose()
-                item_id = row.get("id", "")
-                collection_id = row.get("collection", "")
-
+            item_id = row.get("id", "")
+            collection_id = row.get("collection", "") or row.get("collection_1", "")
+            try:
+                # Create a DataFrame with a single row for this item
+                row_df = pd.DataFrame([row])
+                item = create_stac_item(
+                    df=row_df, item_id=item_id, collection_id=collection_id
+                )
+                if not item or not isinstance(item, dict):
+                    logger.warning(
+                        f"create_stac_item returned invalid item for {item_id}: {type(item)}"
+                    )
+                    failed_items += 1
+                    continue
+                items.append(item)
+            except Exception as e:
+                logger.error(
+                    f"Failed to create STAC item for {item_id} (row {idx}): {str(e)}"
+                )
                 try:
-                    # Log the row data for debugging
-                    logger.debug(
-                        f"Creating STAC item for {item_id} in collection {collection_id}"
-                    )
+                    # Safely log row data types
+                    if hasattr(row, "dtypes"):
+                        dtypes_info = {col: str(row.dtypes[col]) for col in row.index}
+                        logger.error(f"Row data types: {dtypes_info}")
+                    else:
+                        logger.error("No dtypes available")
 
-                    # Use create_stac_item to create the STAC item
-                    item = create_stac_item(
-                        df=row_df, item_id=item_id, collection_id=collection_id
-                    )
+                    # Log sample data safely
+                    sample_data = {}
+                    for col in row.index if hasattr(row, "index") else row.keys():
+                        try:
+                            value = row[col]
+                            sample_data[
+                                col
+                            ] = f"{type(value).__name__}: {str(value)[:50]}..."
+                        except Exception:
+                            sample_data[col] = "Error accessing value"
+                    logger.error(f"Row sample data: {sample_data}")
 
-                    # Verify the item was created successfully
-                    if not item or not isinstance(item, dict):
+                    # Log specific problematic fields
+                    if "geometry" in row and row.get("geometry") is not None:
+                        geom_val = row.get("geometry")
                         logger.error(
-                            f"create_stac_item returned invalid result for {item_id}: {item}"
+                            f"Geometry type: {type(geom_val)}, value: {str(geom_val)[:200]}..."
                         )
-                        continue
+                except Exception as log_error:
+                    logger.error(f"Error in logging row data: {str(log_error)}")
+                failed_items += 1
 
-                    items.append(item)
-                    logger.debug(f"Successfully created STAC item for {item_id}")
-
-                except Exception as e:
-                    # Log detailed error information
-                    logger.error(
-                        f"Failed to create STAC item for {item_id} (row {idx}): {str(e)}"
-                    )
-                    logger.debug(f"Row data: {row.to_dict()}")
-
-                    # If it's a specific error code 0, log additional context
-                    if str(e) == "0":
-                        logger.error(
-                            f"Item creation failed with error code 0 for {item_id}"
-                        )
-                        logger.error(
-                            "This might indicate a problem with the item data or the create_stac_item function"
-                        )
+        # Log summary of item conversion
+        if failed_items > 0:
+            logger.warning(
+                f"Failed to convert {failed_items} out of {len(actual_results)} items to STAC format"
+            )
+            logger.info(
+                f"Successfully returned {len(items)} items out of {len(actual_results)} rows"
+            )
 
         return items, total, next_token
-        
+
     """ TRANSACTION LOGIC """
 
     async def check_collection_exists(self, collection_id: str):

@@ -16,10 +16,10 @@ class DuckDBFilterClient(AsyncBaseFiltersClient):
         self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         """Get queryable properties for a collection.
-        
+
         Args:
             collection_id: Optional collection ID to get queryables for
-            
+
         Returns:
             Dict containing queryable properties schema
         """
@@ -31,33 +31,30 @@ class DuckDBFilterClient(AsyncBaseFiltersClient):
             "title": "Queryables for STAC API",
             "description": "Queryable properties for STAC items",
             "properties": {
-                "id": {
-                    "description": "Item identifier",
-                    "type": "string"
-                },
+                "id": {"description": "Item identifier", "type": "string"},
                 "collection": {
                     "description": "Collection identifier",
-                    "type": "string"
+                    "type": "string",
                 },
                 "datetime": {
                     "description": "Item datetime",
                     "type": "string",
-                    "format": "date-time"
+                    "format": "date-time",
                 },
                 "start_datetime": {
                     "description": "Item start datetime",
                     "type": "string",
-                    "format": "date-time"
+                    "format": "date-time",
                 },
                 "end_datetime": {
-                    "description": "Item end datetime", 
+                    "description": "Item end datetime",
                     "type": "string",
-                    "format": "date-time"
-                }
+                    "format": "date-time",
+                },
             },
-            "additionalProperties": True
+            "additionalProperties": True,
         }
-        
+
         return queryables
 
     async def get_filter_extension_name(self) -> str:
@@ -67,9 +64,18 @@ class DuckDBFilterClient(AsyncBaseFiltersClient):
     async def get_supported_cql2_ops(self) -> List[str]:
         """Get list of supported CQL2 operators."""
         return [
-            "eq", "neq", "lt", "lte", "gt", "gte",
-            "and", "or", "not",
-            "in", "between",
-            "like", "ilike",
-            "isNull"
+            "eq",
+            "neq",
+            "lt",
+            "lte",
+            "gt",
+            "gte",
+            "and",
+            "or",
+            "not",
+            "in",
+            "between",
+            "like",
+            "ilike",
+            "isNull",
         ]
