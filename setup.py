@@ -21,6 +21,7 @@ extra_reqs = {
         "pytest",
         "pytest-cov",
         "pytest-asyncio",
+        "pytest-timeout",
         "pre-commit",
         "requests",
         "ciso8601",
