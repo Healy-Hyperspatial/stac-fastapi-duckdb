@@ -41,6 +41,7 @@ jobs:
       - name: Install DuckDB stac-fastapi
         run: |
           pip install .[dev,server]
+          pip install pytest-timeout
 
       - name: Create test data directory
         run: |
