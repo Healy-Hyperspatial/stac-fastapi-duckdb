@@ -1,7 +1,7 @@
 """DuckDB runtime configuration and data source mapping."""
 import json
-import os
 import logging
+import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -12,6 +12,7 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.types.config import ApiSettings
 
 logger = logging.getLogger(__name__)
+
 
 class DuckDBSettings(ApiSettings, ApiBaseSettings):
     """DuckDB API settings and configuration."""
@@ -109,33 +110,35 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
                 logger.info("Successfully installed httpfs extension")
             except Exception as e:
                 logger.warning(f"Failed to install httpfs extension: {str(e)}")
-                
+
             try:
                 conn.execute("LOAD httpfs;")
                 logger.info("Successfully loaded httpfs extension")
             except Exception as e:
                 logger.warning(f"Failed to load httpfs extension: {str(e)}")
-                
+
             # Install and load spatial extension for geometry functions
             try:
                 conn.execute("INSTALL spatial;")
                 logger.info("Successfully installed spatial extension")
             except Exception as e:
                 logger.warning(f"Failed to install spatial extension: {str(e)}")
-                
+
             try:
                 conn.execute("LOAD spatial;")
                 logger.info("Successfully loaded spatial extension")
             except Exception as e:
                 logger.error(f"Failed to load spatial extension: {str(e)}")
-                logger.error("Spatial functions like ST_Intersects will not work without the spatial extension")
-                
+                logger.error(
+                    "Spatial functions like ST_Intersects will not work without the spatial extension"
+                )
+
             # Best-effort caching knobs
             try:
                 # Enable object cache
                 conn.execute("SET enable_object_cache=true")
                 logger.info("Enabled object cache")
-                
+
                 # Enable parquet metadata cache
                 try:
                     conn.execute("SET parquet_metadata_cache=true")
@@ -144,7 +147,7 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
                     logger.warning(f"Could not enable parquet metadata cache: {str(e)}")
             except Exception as e:
                 logger.warning(f"Failed to configure caching: {str(e)}")
-                
+
             yield conn
         finally:
             try:

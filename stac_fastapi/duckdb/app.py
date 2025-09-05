@@ -2,7 +2,6 @@
 
 import os
 from contextlib import asynccontextmanager
-
 from typing import Optional
 
 from fastapi import FastAPI
@@ -26,9 +25,7 @@ session = Session.create_from_settings(settings)
 database_logic = DatabaseLogic()
 
 # Initialize extensions
-filter_extension = FilterExtension(
-    client=DuckDBFilterClient(database=database_logic)
-)
+filter_extension = FilterExtension(client=DuckDBFilterClient(database=database_logic))
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
@@ -42,13 +39,13 @@ extensions = [
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
-# Create the base post request model
-BasePostRequestModel = create_post_request_model(extensions)
 
 # Create a custom post request model that includes the token field
-class DuckDBPostRequestModel(BasePostRequestModel):
+class DuckDBPostRequestModel(create_post_request_model(extensions)):  # type: ignore
     """Custom POST request model with token field for pagination."""
+
     token: Optional[str] = Field(None, description="Pagination token")
+
 
 post_request_model = DuckDBPostRequestModel
 

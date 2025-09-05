@@ -252,7 +252,7 @@ def create_stac_item(df, item_id, collection_id):
                     # Handle arrays and scalars safely to avoid ambiguous truth value warnings
                     if value is not None:
                         # For arrays, check if they have any elements; for scalars, check if not NaN
-                        if hasattr(value, '__len__') and hasattr(value, 'size'):
+                        if hasattr(value, "__len__") and hasattr(value, "size"):
                             # NumPy array or similar - check if it has elements
                             if value.size > 0:
                                 item["properties"][column] = convert_type(value)
@@ -268,15 +268,21 @@ def create_stac_item(df, item_id, collection_id):
     except Exception as e:
         # Log the full error for debugging
         logger.error(f"Error creating STAC item {item_id}: {str(e)}")
-        if 'row' in locals():
-            logger.error(f"Row data types: {dict(row.dtypes) if hasattr(row, 'dtypes') else 'No dtypes available'}")
-            logger.error(f"Row columns: {list(row.index) if hasattr(row, 'index') else list(row.keys())}")
+        if "row" in locals():
+            logger.error(
+                f"Row data types: {dict(row.dtypes) if hasattr(row, 'dtypes') else 'No dtypes available'}"
+            )
+            logger.error(
+                f"Row columns: {list(row.index) if hasattr(row, 'index') else list(row.keys())}"
+            )
             # Log specific field values that commonly cause issues
-            problematic_fields = ['geometry', 'bbox', 'start_datetime', 'end_datetime']
+            problematic_fields = ["geometry", "bbox", "start_datetime", "end_datetime"]
             for field in problematic_fields:
                 if field in row:
                     value = row.get(field)
-                    logger.error(f"Field '{field}': type={type(value)}, value={str(value)[:100]}...")
+                    logger.error(
+                        f"Field '{field}': type={type(value)}, value={str(value)[:100]}..."
+                    )
         else:
             logger.error("No row data available for debugging")
         raise  # Re-raise the exception to be handled by the caller
