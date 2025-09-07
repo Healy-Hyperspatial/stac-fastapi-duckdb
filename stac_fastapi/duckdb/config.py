@@ -105,7 +105,6 @@ class DuckDBSettings(ApiSettings, ApiBaseSettings):
     @contextmanager
     def create_connection(self):
         """Create a per-request DuckDB connection with httpfs and spatial extensions configured."""
-        # Use disk-based database for Lambda compatibility and better performance
         conn = duckdb.connect(database=self.duckdb_database_path)
         try:
             # Enable remote I/O via httpfs where available
