@@ -660,31 +660,45 @@ class DatabaseLogic:
             return f"'{str(value)}'"
 
     @staticmethod
-    def populate_sort(sortby: List[SortExtension]) -> List[Tuple[str, int]]:
+    def populate_sort(sortby) -> List[Tuple[str, int]]:
         """
-        Transform a list of sort criteria into the format expected by MongoDB.
+        Convert already-parsed sort specs (from Core) into (field, direction) tuples.
 
-        Args:
-            sortby (List[SortExtension]): A list of SortExtension objects with 'field'
-                                        and 'direction' attributes.
-
-        Returns:
-            List[Tuple[str, int]]: A list of tuples where each tuple is (fieldname, direction),
-                                with direction being 1 for 'asc' and -1 for 'desc'.
-                                Returns an empty list if no sort criteria are provided.
+        Expected inputs (Core handles +/- parsing):
+        - list of dicts: {"field": str, "direction": "asc"|"desc"}
+        - list of objects with `.field` and `.direction` (Enum or str)
+        - None -> default [('id', 1)]
         """
-        return sortby
-        # if not sortby:
-        #     return []
+        results: List[Tuple[str, int]] = []
 
-        # mongo_sort = []
-        # for sort_extension in sortby:
-        #     field = sort_extension.field
-        #     # Convert the direction enum to a string, then to MongoDB's expected format
-        #     direction = 1 if sort_extension.direction.value == "asc" else -1
-        #     mongo_sort.append((field, direction))
+        if not sortby:
+            return [("id", 1)]
 
-        # return mongo_sort
+        for entry in sortby:
+            # Extract field and direction from dict or object
+            if isinstance(entry, dict):
+                field = entry.get("field")
+                direction_val = entry.get("direction", "asc")
+            else:
+                field = getattr(entry, "field", None)
+                direction_attr = getattr(entry, "direction", "asc")
+                direction_val = getattr(direction_attr, "value", direction_attr)
+
+            if not field:
+                continue
+
+            # Strip properties. prefix used by STAC field names
+            if isinstance(field, str) and field.startswith("properties."):
+                field = field[11:]
+
+            direction = 1 if str(direction_val).lower() == "asc" else -1
+            results.append((field, direction))
+
+        # Ensure stable secondary sort by id
+        if not any(f == "id" for f, _ in results):
+            results.append(("id", 1))
+        
+        return results
 
     async def get_total_count(
         self,
@@ -765,7 +779,7 @@ class DatabaseLogic:
         search: dict,
         limit: int,
         token: Optional[str],
-        sort: Optional[Dict[str, Dict[str, str]]],
+        sort: Optional[List[Tuple[str, int]]],
         collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
         datetime_search: Optional[dict] = None,
@@ -776,7 +790,8 @@ class DatabaseLogic:
             search (Search): The search query to be executed.
             limit (int): The maximum number of results to be returned.
             token (Optional[str]): The token used to return the next set of results.
-            sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
+            sort (Optional[List[Tuple[str, int]]]): Normalized sort specs from populate_sort,
+                e.g. [("datetime", -1), ("id", 1)]. If None, no ORDER BY is applied.
             collection_ids (Optional[List[str]]): The collection ids to search.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
@@ -843,19 +858,13 @@ class DatabaseLogic:
         union_sql = " UNION ALL ".join(subqueries)
         base_sql = f"SELECT * FROM ({union_sql})"
 
-        # Sorting
-        if sort:
-            # Handle different sort formats
-            if "field" in sort and "direction" in sort:
-                # Format: {"field": "id", "direction": "asc"}
-                field = sort["field"]
-                direction = sort["direction"]
-                sort_clause = f"{field} {direction}"
-            else:
-                # Format: {"field1": {"order": "asc"}, "field2": {"order": "desc"}}
-                sort_clause = ", ".join(
-                    f"{field} {direction['order']}" for field, direction in sort.items()
-                )
+        # Sorting: expect 'sort' already normalized by populate_sort
+        logger.debug(f"Received sort specs (already normalized): {sort}")
+        if sort and isinstance(sort, list) and len(sort) > 0 and isinstance(sort[0], tuple):
+            sort_clause = ", ".join(
+                f"{field} {'ASC' if int(direction) > 0 else 'DESC'}" for field, direction in sort
+            )
+            logger.debug(f"Generated SQL sort clause: {sort_clause}")
             base_sql += f" ORDER BY {sort_clause}"
 
         # Pagination: mimic ES search_after pattern with offset-based approach
