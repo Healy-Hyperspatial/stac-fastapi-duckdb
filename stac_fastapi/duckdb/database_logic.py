@@ -18,7 +18,6 @@ from typing import (
 import pandas as pd
 from fastapi import HTTPException, Request
 from stac_fastapi.core import serializers
-from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.types.errors import NotFoundError  # ConflictError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -697,7 +696,7 @@ class DatabaseLogic:
         # Ensure stable secondary sort by id
         if not any(f == "id" for f, _ in results):
             results.append(("id", 1))
-        
+
         return results
 
     async def get_total_count(
@@ -860,9 +859,15 @@ class DatabaseLogic:
 
         # Sorting: expect 'sort' already normalized by populate_sort
         logger.debug(f"Received sort specs (already normalized): {sort}")
-        if sort and isinstance(sort, list) and len(sort) > 0 and isinstance(sort[0], tuple):
+        if (
+            sort
+            and isinstance(sort, list)
+            and len(sort) > 0
+            and isinstance(sort[0], tuple)
+        ):
             sort_clause = ", ".join(
-                f"{field} {'ASC' if int(direction) > 0 else 'DESC'}" for field, direction in sort
+                f"{field} {'ASC' if int(direction) > 0 else 'DESC'}"
+                for field, direction in sort
             )
             logger.debug(f"Generated SQL sort clause: {sort_clause}")
             base_sql += f" ORDER BY {sort_clause}"
