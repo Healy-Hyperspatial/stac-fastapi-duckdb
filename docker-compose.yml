@@ -20,5 +20,6 @@ services:
     volumes:
       - ./stac_collections:/app/stac_collections
       - ./stac_fastapi:/app/stac_fastapi
+      - ./tests:/app/tests
     command:
       bash -c "python -m stac_fastapi.duckdb.app"
