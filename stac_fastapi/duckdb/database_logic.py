@@ -686,10 +686,6 @@ class DatabaseLogic:
             if not field:
                 continue
 
-            # Strip properties. prefix used by STAC field names
-            if isinstance(field, str) and field.startswith("properties."):
-                field = field[11:]
-
             direction = 1 if str(direction_val).lower() == "asc" else -1
             results.append((field, direction))
 
@@ -865,9 +861,52 @@ class DatabaseLogic:
             and len(sort) > 0
             and isinstance(sort[0], tuple)
         ):
+            # Resolve column names against actual Parquet schema of first source
+            resolved_sort: List[Tuple[str, int]] = []
+            try:
+                sample_url = sources[0][1] if sources else None
+                available_cols: List[str] = []
+                if sample_url:
+                    with self.settings.create_connection() as _conn:
+                        df_cols = _conn.execute("SELECT * FROM read_parquet(?) LIMIT 0", [sample_url]).fetchdf().columns
+                        available_cols = list(df_cols)
+
+                def resolve_field(f: str) -> str:
+                    # Support inputs like 'datetime', 'properties.datetime', 'properties__datetime'
+                    base = f
+                    if isinstance(f, str):
+                        if f.startswith('properties.'):
+                            base = f[11:]
+                        elif f.startswith('properties__'):
+                            base = f[12:]
+
+                    # Try exact first
+                    if f in available_cols:
+                        return f
+
+                    # Try common STAC variants based on base
+                    for cand in (f"properties.{base}", f"properties__{base}", base):
+                        if cand in available_cols:
+                            return cand
+
+                    # Fallback to original
+                    return f
+
+                for field, direction in sort:
+                    resolved = resolve_field(field)
+                    resolved_sort.append((resolved, direction))
+            except Exception as _e:
+                # On any error, fall back to original fields
+                logger.debug(f"Field resolution skipped due to error: {_e}")
+                resolved_sort = sort
+
+            def quote_ident(name: str) -> str:
+                # Double-quote identifiers and escape internal quotes for DuckDB
+                safe = str(name).replace('"', '""')
+                return f'"{safe}"'
+
             sort_clause = ", ".join(
-                f"{field} {'ASC' if int(direction) > 0 else 'DESC'}"
-                for field, direction in sort
+                f"{quote_ident(field)} {'ASC' if int(direction) > 0 else 'DESC'}" for field, direction in resolved_sort
             )
             logger.debug(f"Generated SQL sort clause: {sort_clause}")
             base_sql += f" ORDER BY {sort_clause}"
