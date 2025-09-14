@@ -868,16 +868,22 @@ class DatabaseLogic:
                 available_cols: List[str] = []
                 if sample_url:
                     with self.settings.create_connection() as _conn:
-                        df_cols = _conn.execute("SELECT * FROM read_parquet(?) LIMIT 0", [sample_url]).fetchdf().columns
+                        df_cols = (
+                            _conn.execute(
+                                "SELECT * FROM read_parquet(?) LIMIT 0", [sample_url]
+                            )
+                            .fetchdf()
+                            .columns
+                        )
                         available_cols = list(df_cols)
 
                 def resolve_field(f: str) -> str:
                     # Support inputs like 'datetime', 'properties.datetime', 'properties__datetime'
                     base = f
                     if isinstance(f, str):
-                        if f.startswith('properties.'):
+                        if f.startswith("properties."):
                             base = f[11:]
-                        elif f.startswith('properties__'):
+                        elif f.startswith("properties__"):
                             base = f[12:]
 
                     # Try exact first
@@ -906,7 +912,8 @@ class DatabaseLogic:
                 return f'"{safe}"'
 
             sort_clause = ", ".join(
-                f"{quote_ident(field)} {'ASC' if int(direction) > 0 else 'DESC'}" for field, direction in resolved_sort
+                f"{quote_ident(field)} {'ASC' if int(direction) > 0 else 'DESC'}"
+                for field, direction in resolved_sort
             )
             logger.debug(f"Generated SQL sort clause: {sort_clause}")
             base_sql += f" ORDER BY {sort_clause}"
