@@ -6,39 +6,40 @@ PROJECT_ROOT := $(abspath .)
 STAC_DIR := $(PROJECT_ROOT)/stac_collections
 DEMO_PARQUET := $(STAC_DIR)/io-lulc-9-class/io-lulc-9-class.parquet
 PARQUET_URL := file:///app/stac_collections/io-lulc-9-class/io-lulc-9-class.parquet
+CONTAINER_ENGINE ?= docker
 
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*##"} {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build docker image
-	docker compose build
+build: ## Build $(CONTAINER_ENGINE) image
+	$(CONTAINER_ENGINE) compose build
 
-up: ## Run docker compose in foreground with demo env
-	STAC_FILE_PATH="$(STAC_DIR)" PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}' docker compose up
+up: ## Run $(CONTAINER_ENGINE) compose in foreground with demo env
+	STAC_FILE_PATH="$(STAC_DIR)" PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}' $(CONTAINER_ENGINE) compose up
 
-up-d: ## Run docker compose detached with demo env
-	STAC_FILE_PATH="$(STAC_DIR)" PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}' docker compose up -d
+up-d: ## Run $(CONTAINER_ENGINE) compose detached with demo env
+	STAC_FILE_PATH="$(STAC_DIR)" PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}' $(CONTAINER_ENGINE) compose up -d
 
 down: ## Stop containers
-	docker compose down
+	$(CONTAINER_ENGINE) compose down
 
 logs: ## Tail logs
-	docker compose logs -f
+	$(CONTAINER_ENGINE) compose logs -f
 
 DOCKER_ENV = STAC_FILE_PATH="$(STAC_DIR)" \
 	PARQUET_URLS_JSON='{"io-lulc-9-class":"$(PARQUET_URL)"}'
 
-test: ## Run tests in docker
-	$(DOCKER_ENV) docker compose exec app-duckdb pytest tests/ -v
+test: ## Run tests in $(CONTAINER_ENGINE)
+	$(DOCKER_ENV) $(CONTAINER_ENGINE) compose exec app-duckdb pytest tests/ -v
 
-test-build: ## Build and run tests in docker
-	$(DOCKER_ENV) docker compose build
-	$(DOCKER_ENV) docker compose up -d
+test-build: ## Build and run tests in $(CONTAINER_ENGINE)
+	$(DOCKER_ENV) $(CONTAINER_ENGINE) compose build
+	$(DOCKER_ENV) $(CONTAINER_ENGINE) compose up -d
 	@echo "Waiting for containers to be ready..."
 	@sleep 5
-	$(DOCKER_ENV) docker compose exec app-duckdb pytest tests/ -v
-	$(DOCKER_ENV) docker compose down
+	$(DOCKER_ENV) $(CONTAINER_ENGINE) compose exec app-duckdb pytest tests/ -v
+	$(DOCKER_ENV) $(CONTAINER_ENGINE) compose down
 
 restart: down up-d ## Restart detached
 
